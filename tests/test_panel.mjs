@@ -5,6 +5,7 @@ import vm from 'node:vm';
 const source=fs.readFileSync('custom_components/football_news/frontend/panel.js','utf8');
 const elements=new Map();
 class HTMLElementMock {
+  set lang(_value) {throw new Error('HTMLElement.lang is a reflected attribute; do not set during construction');}
   attachShadow(){this.shadowRoot={innerHTML:'',addEventListener(){},querySelector(){return null;}};return this.shadowRoot;}
 }
 const context={

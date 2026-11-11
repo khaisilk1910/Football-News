@@ -1,4 +1,4 @@
-/* Football News v1.0 — independent Home Assistant frontend, no third-party JS. */
+/* Football News v2026.11.11.5 — standalone HA panel, no external JS. */
 const FN_WORDS = {
   vi: {
     live:'Trực tiếp',fixtures:'Lịch thi đấu',results:'Kết quả',table:'Bảng xếp hạng',news:'Tin tức',overview:'Tổng quan',
@@ -101,7 +101,7 @@ class FootballNewsPanel extends HTMLElement {
     this.selectedLeague = 'all';
     this.modal = null;
     this.data = DEFAULT_DATA;
-    this.lang = 'vi';
+    this.locale = 'vi';
     this.leaderCache = {};
     this.monthData = null;
     this.monthValue = new Date().toISOString().slice(0,7);
@@ -115,6 +115,7 @@ class FootballNewsPanel extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    // HA may set hass before connectedCallback or after it; support both.
     if (this.isConnected && Date.now() - this._lastAttempt > 60000) this.load();
   }
   connectedCallback() {
@@ -123,12 +124,12 @@ class FootballNewsPanel extends HTMLElement {
     this._timer = setInterval(() => {if (!document.hidden) this.load();}, 90000);
   }
   disconnectedCallback() {clearInterval(this._timer);}
-  t(key) {return FN_WORDS[this.lang]?.[key] || FN_WORDS.vi[key] || key;}
+  t(key) {return FN_WORDS[this.locale]?.[key] || FN_WORDS.vi[key] || key;}
   date(iso) {
     const parsed = ts(iso);
     if (!parsed) return this.t('unknown');
     try {
-      return new Intl.DateTimeFormat(this.lang === 'vi' ? 'vi-VN' : 'en-GB', {
+      return new Intl.DateTimeFormat(this.locale === 'vi' ? 'vi-VN' : 'en-GB', {
         timeZone: this._hass?.config?.time_zone || undefined,
         day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,
       }).format(parsed);
@@ -162,7 +163,7 @@ class FootballNewsPanel extends HTMLElement {
     try {
       const data = await this._hass.callWS({type:'football_news/data'});
       this.data = {...DEFAULT_DATA, ...alive(data)};
-      this.lang = FN_WORDS[data.language] ? data.language : 'vi';
+      this.locale = FN_WORDS[this.data.language] ? this.data.language : 'vi';
       if (this.selectedLeague !== 'all' && !this.leagues().some(l => l.league_code === this.selectedLeague)) this.selectedLeague = 'all';
       this._last = Date.now();
       this.error = '';
@@ -348,7 +349,9 @@ class FootballNewsPanel extends HTMLElement {
     const connectionNotice=this.error ? `<div class="warn" role="alert"><strong>${this.t('error')}:</strong> ${esc(this.error)}. ${this.t('connectionHelp')}</div>` : '';
     const sourceNotice=errors.length ? `<div class="warn" role="status"><strong>${this.t('error')}:</strong> ${errors.slice(0,3).map(e=>esc(e)).join(' · ')}. ${this.t('stale')}</div>` : '';
     const setupNotice=leagues.length===0 ? `<div class="notice">${this.t('setupHelp')}</div>` : '';
-    this.shadowRoot.innerHTML=`<style>${STYLE}${MORE_STYLE}</style><div class="app"><div class="shell"><aside class="aside"><div class="brand"><img alt="${this.t('logo')}" src="/football_news/icon.png"><span>Football <b>News</b></span></div><nav class="nav">${tabs.map(([key,icon])=>`<button class="${this.tab===key?'active':''}" data-tab="${key}"><span class="emoji">${icon}</span>${this.t(key)}</button>`).join('')}</nav><div class="source-note">${this.t('note')}</div></aside><main class="main"><header class="top"><div><span class="eyebrow">FOOTBALL NEWS / HOME ASSISTANT</span><h1>${this.t('dashboard')}</h1><p class="muted">${this.t('sources')}</p></div><div class="actions"><button class="refresh" data-refresh>↻ ${this.t('refresh')}</button></div></header>${leagueChips}<section class="hero"><div><span class="league-pill"><span class="dot"></span>${esc(this.selectedLeague==='all'?this.t('allLeagues'):(leagues.find(l=>l.league_code===this.selectedLeague)?.name||this.selectedLeague))}</span><h2>⚽ ${this.t('matches')} · ${this.t('data')}</h2><div class="muted">${leagues.length} ${this.t('league')} · ${this.t('browser')}</div></div><img class="hero-icon" src="/football_news/icon.png" alt=""></section><div class="metrics"><div class="metric"><span class="deco">⚡</span><span class="num">${live.length}</span><span class="key">${this.t('live')}</span></div><div class="metric"><span class="deco">🗓</span><span class="num">${future.length}</span><span class="key">${this.t('fixtures')}</span></div><div class="metric"><span class="deco">📰</span><span class="num">${news.length}</span><span class="key">${this.t('news')}</span></div></div>${setupNotice}${connectionNotice}${!this._last && !this.error?`<div class="warn">${this.t('waiting')}</div>`:''}${sourceNotice}${body}<div class="feedinfo"><span class="dot"></span>${this.t('source')}: ESPN · ${this.t('updated')}: ${esc((leagues[0]?.updated_at?.fixtures)?this.date(leagues[0].updated_at.fixtures):'–')}</div><div class="footer">${this.t('note')}</div></main></div>${this.modalMarkup()}</div>`;
+    const allUnready=leagues.length>0 && leagues.every(l => !l.ready);
+    const backendNotice=allUnready ? `<div class="warn" role="status">${leagues.some(l=>l.attempted)?'Nguồn bóng đá chưa trả dữ liệu. Xem lỗi kết nối bên dưới hoặc kiểm tra nhật ký Football News.':'Đang tải dữ liệu ESPN lần đầu; Home Assistant không bị chặn trong lúc chờ.'}</div>` : '';
+    this.shadowRoot.innerHTML=`<style>${STYLE}${MORE_STYLE}</style><div class="app"><div class="shell"><aside class="aside"><div class="brand"><img alt="${this.t('logo')}" src="/football_news/icon.png"><span>Football <b>News</b></span></div><nav class="nav">${tabs.map(([key,icon])=>`<button class="${this.tab===key?'active':''}" data-tab="${key}"><span class="emoji">${icon}</span>${this.t(key)}</button>`).join('')}</nav><div class="source-note">${this.t('note')}</div></aside><main class="main"><header class="top"><div><span class="eyebrow">FOOTBALL NEWS / HOME ASSISTANT · 2026.11.11.5</span><h1>${this.t('dashboard')}</h1><p class="muted">${this.t('sources')}</p></div><div class="actions"><button class="refresh" data-refresh>↻ ${this.t('refresh')}</button></div></header>${leagueChips}<section class="hero"><div><span class="league-pill"><span class="dot"></span>${esc(this.selectedLeague==='all'?this.t('allLeagues'):(leagues.find(l=>l.league_code===this.selectedLeague)?.name||this.selectedLeague))}</span><h2>⚽ ${this.t('matches')} · ${this.t('data')}</h2><div class="muted">${leagues.length} ${this.t('league')} · ${this.t('browser')}</div></div><img class="hero-icon" src="/football_news/icon.png" alt=""></section><div class="metrics"><div class="metric"><span class="deco">⚡</span><span class="num">${live.length}</span><span class="key">${this.t('live')}</span></div><div class="metric"><span class="deco">🗓</span><span class="num">${future.length}</span><span class="key">${this.t('fixtures')}</span></div><div class="metric"><span class="deco">📰</span><span class="num">${news.length}</span><span class="key">${this.t('news')}</span></div></div>${setupNotice}${backendNotice}${connectionNotice}${!this._last && !this.error?`<div class="warn">${this.t('waiting')}</div>`:''}${sourceNotice}${body}<div class="feedinfo"><span class="dot"></span>${this.t('source')}: ESPN · ${this.t('updated')}: ${esc((leagues[0]?.updated_at?.fixtures)?this.date(leagues[0].updated_at.fixtures):'–')}</div><div class="footer">${this.t('note')}</div></main></div>${this.modalMarkup()}</div>`;
   }
 }
 if(!customElements.get('football-news-panel')) customElements.define('football-news-panel',FootballNewsPanel);

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import probatio as vol
+import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.components.panel_custom import async_register_panel
 from homeassistant.components.http import StaticPathConfig
@@ -47,12 +47,15 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         other_coordinator = other["coordinator"]
         code = other_coordinator.provider.league
         snapshot = other_coordinator.data or {}
+        provider_errors = snapshot.get("errors") or other_coordinator._last_errors
         leagues.append({"league_code": code, "name": LEAGUES.get(code, code),
                         "fixtures": snapshot.get("fixtures", [])[:350],
                         "standings": snapshot.get("standings", [])[:60],
                         "news": snapshot.get("news", [])[:25],
                         "updated_at": snapshot.get("updated_at", {}),
-                        "errors": snapshot.get("errors", [])[:3]})
+                        "errors": provider_errors[:3],
+                        "attempted": other_coordinator._attempted_refresh,
+                        "ready": bool(snapshot.get("updated_at"))})
     preferences = await hass.data[DOMAIN]["preferences"].read()
     connection.send_result(msg["id"], {
         **data,
@@ -60,7 +63,7 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         "entry_id": runtime["entry"].entry_id,
         "language": runtime["entry"].options.get("locale", "vi"),
         "leagues": leagues, "preferences": preferences,
-        "admin": bool(connection.user.is_admin),
+        "admin": bool(connection.user and connection.user.is_admin),
     })
 
 
@@ -170,6 +173,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data.setdefault(DOMAIN, {"entries": {}})
     hass.data[DOMAIN]["preferences"] = FootballPreferences(hass)
     await hass.http.async_register_static_paths([
+        StaticPathConfig("/football_news/assets", str(_ROOT / "frontend"), False),
         StaticPathConfig("/football_news/panel.js", str(_ROOT / "frontend" / "panel.js"), False),
         StaticPathConfig("/football_news/icon.png", str(_ROOT / "brand" / "icon.png"), False),
     ])
@@ -179,7 +183,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         webcomponent_name="football-news-panel",
         sidebar_title="Football News",
         sidebar_icon="mdi:soccer",
-        module_url=f"/football_news/panel.js?v={VERSION}",
+        module_url=f"/football_news/assets/panel_entry.js?v={VERSION}",
         require_admin=False,
     )
     websocket_api.async_register_command(hass, ws_get_data)

@@ -2,7 +2,7 @@
 
 > Đây là bảng **đối chiếu chức năng**, không phải bản sao mã nguồn Football Hub. Football Hub thuộc Adrian Apel và có giấy phép cấm đổi thương hiệu/tái phân phối nếu chưa được cấp phép bằng văn bản. Football News triển khai độc lập, không bao gồm mã nguồn, tệp giao diện, logo hoặc âm thanh gốc.
 
-## Tình trạng trong bản 2026.11.11.4
+## Tình trạng trong bản 2026.11.11.5
 
 | Nhóm | Có trong Football News | Giới hạn đang tồn tại |
 |---|---|---|

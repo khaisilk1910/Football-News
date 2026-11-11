@@ -24,6 +24,15 @@ def main(tag: str | None = None) -> None:
     manifest = json.loads((component / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["domain"] == DOMAIN
     assert manifest["name"] == "Football News"
+    assert "panel_custom" in manifest["dependencies"], "Missing custom panel dependency"
+    assert (component / "frontend" / "panel_entry.js").is_file(), "Missing panel loader"
+    assert (component / "frontend" / "panel.js").is_file(), "Missing dashboard"
+    for filename in ("__init__.py", "config_flow.py"):
+        text = (component / filename).read_text(encoding="utf-8")
+        assert "import voluptuous as vol" in text, f"Wrong schema import in {filename}"
+        assert "import probatio" not in text, f"Unsupported schema import in {filename}"
+    panel_source = (component / "frontend" / "panel.js").read_text(encoding="utf-8")
+    assert "this.lang" not in panel_source, "HTMLElement.lang causes CustomElement constructor failure"
     version = manifest["version"]
 
     # Do not import const.py: importing the integration may require Home Assistant.

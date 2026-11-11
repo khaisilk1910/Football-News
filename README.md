@@ -86,6 +86,17 @@ Xem **[đối chiếu tính năng và giới hạn hiện tại](FEATURES.md)** 
 
 > Football News là dự án cộng đồng độc lập, không phải sản phẩm chính thức của Home Assistant, ESPN hoặc Zalo.
 
+
+### Khi sidebar Football News bị đen hoặc trắng
+
+Phiên bản **2026.11.11.5** đã sửa lỗi tạo Custom Element do gán nhầm `this.lang` trong constructor, cũng như lỗi import schema `probatio`. Nếu đã cài phiên bản cũ, cần cập nhật **toàn bộ** mã nguồn, không chỉ README.
+
+1. Kiểm tra trên GitHub, `custom_components/football_news/manifest.json` phải có `"version": "2026.11.11.5"`. Đảm bảo cả `__init__.py`, `config_flow.py`, `frontend/panel.js`, `frontend/panel_entry.js` và `manifest.json` thuộc cùng một bản commit.
+2. Cập nhật qua Marketplace hoặc chép lại toàn bộ `/config/custom_components/football_news/` từ bản ZIP mới. Khởi động lại **Home Assistant**.
+3. Truy cập địa chỉ `/football_news/assets/panel_entry.js` trên Home Assistant của bạn. Nếu trình duyệt trả **404**, bản cài chưa đăng ký tài nguyên frontend mới; hãy kiểm tra log khi tải tích hợp.
+4. Mở lại `/football-news` với **Ctrl+Shift+R** (hoặc cửa sổ riêng tư) để làm mới module JavaScript. Trên trang sẽ có dòng phiên bản `2026.11.11.5` khi frontend mới được tải.
+5. Nếu giao diện xuất hiện nhưng chưa có lịch thi đấu, xem ô cảnh báo **Lỗi nguồn dữ liệu** và entity **Data source ready**. Lỗi mạng ESPN khác với lỗi trang trống. Nếu vẫn trắng, gửi ảnh **F12 → Console** và tab **Network** với bộ lọc `panel_entry.js` / `panel.js`.
+
 ## 🛠️ Thiết lập lần đầu
 
 1. Cài Football News qua Marketplace (hoặc cài thủ công ở phần bên dưới).
@@ -215,7 +226,7 @@ Mỗi giải tạo thiết bị Football News với các cảm biến tóm tắt
 
 ### Trang Football News trong sidebar trắng
 
-1. Xác nhận phiên bản của tích hợp là **2026.11.11.4** tại **Cài đặt → Thiết bị & dịch vụ → Football News**.
+1. Xác nhận phiên bản của tích hợp là **2026.11.11.5** tại **Cài đặt → Thiết bị & dịch vụ → Football News**.
 2. Mở trực tiếp `http://ĐỊA_CHỈ_HA:8123/football_news/panel.js` trong trình duyệt. Phải hiển thị mã JavaScript, không phải lỗi 404 hoặc trang đăng nhập. Dùng cùng host/port mà bạn đang mở Home Assistant.
 3. **Khởi động lại Home Assistant** sau khi thay mã Python, rồi tải lại trang bằng **Ctrl+F5** để xóa cache trình duyệt.
 4. Nếu vẫn trắng, nhấn **F12 → Console** và kiểm tra các lỗi có chữ `football-news-panel` hoặc `panel.js`. Bản cập nhật sẽ hiển thị thông báo khi dữ liệu WebSocket bị lỗi.
@@ -248,16 +259,16 @@ Không đăng mật khẩu, token hoặc Zalo ID thật vào issue công khai. C
 
 ## 📦 Cập nhật và phát hành
 
-Phiên bản mã nguồn hiện tại: **2026.11.11.4**. Cập nhật qua **Cài đặt → Marketplace** hoặc trang **Updates** khi bản phát hành mới xuất hiện. Với bản cài thủ công, thay thư mục `custom_components/football_news` rồi khởi động lại Home Assistant.
+Phiên bản mã nguồn hiện tại: **2026.11.11.5**. Cập nhật qua **Cài đặt → Marketplace** hoặc trang **Updates** khi bản phát hành mới xuất hiện. Với bản cài thủ công, thay thư mục `custom_components/football_news` rồi khởi động lại Home Assistant.
 
 Dành cho người duy trì repository:
 
 - Đưa **toàn bộ nội dung repository**, bao gồm `.github` và `.gitignore`, lên `https://github.com/khaisilk1910/Football-News`, không chỉ file ZIP cài đặt.
 - Chạy [quy trình kiểm tra mã nguồn](https://github.com/khaisilk1910/Football-News/actions/workflows/validate.yml) và xử lý lỗi nếu có.
-- Tạo Git tag **`v2026.11.11.4`** trùng phiên bản trong `manifest.json` và `const.py`. Quy trình `.github/workflows/release.yml` tự xây dựng ZIP, kiểm tra và tạo GitHub Release kèm **`football_news.zip`** cho ai cần cài thủ công.
+- Tạo Git tag **`v2026.11.11.5`** trùng phiên bản trong `manifest.json` và `const.py`. Quy trình `.github/workflows/release.yml` tự xây dựng ZIP, kiểm tra và tạo GitHub Release kèm **`football_news.zip`** cho ai cần cài thủ công.
 - Marketplace cài trực tiếp thư mục `custom_components/football_news` từ mã nguồn GitHub, nên **không bắt buộc tải asset ZIP**. Vẫn nên tạo GitHub Release mới để cập nhật rõ ràng. Không dùng tag cũ `v2026.11.11.1` cho mã mới.
 
-**Nếu gặp lỗi 404 khi cài:** đây là tình trạng bản cũ bật `zip_release: true` nhưng Release GitHub thiếu `football_news.zip`. Hãy đưa **trọn bộ repository mới** (cả thư mục ẩn `.github` và file `.gitignore`) lên nhánh `main`, tạo Release `v2026.11.11.4` từ commit mới, sau đó tải lại thông tin repository trong Marketplace và cài đặt. Xem [hướng dẫn xuất bản và sửa lỗi](RELEASE.md).
+**Nếu gặp lỗi 404 khi cài:** đây là tình trạng bản cũ bật `zip_release: true` nhưng Release GitHub thiếu `football_news.zip`. Hãy đưa **trọn bộ repository mới** (cả thư mục ẩn `.github` và file `.gitignore`) lên nhánh `main`, tạo Release `v2026.11.11.5` từ commit mới, sau đó tải lại thông tin repository trong Marketplace và cài đặt. Xem [hướng dẫn xuất bản và sửa lỗi](RELEASE.md).
 
 File **`.gitignore`** nằm ở **thư mục gốc** của repository, cùng cấp `README.md`, `LICENSE` và `hacs.json`. File có dấu chấm đầu tên nên có thể bị ẩn trong trình quản lý tập tin. Gói **repository ZIP** chứa file này; gói cài **`football_news.zip`** không cần chứa nó.
 

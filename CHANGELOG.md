@@ -1,5 +1,15 @@
 # Lịch sử cập nhật Football News
 
+## 2026.11.11.5 — Sửa nguyên nhân dashboard trắng trên trình duyệt
+
+- Khắc phục xung đột `this.lang` trong constructor Web Component; dùng thuộc tính nội bộ `this.locale` để không tạo attribute trước khi khởi tạo hoàn tất.
+- Thử dựng component trên Chromium thật; trang và cảnh báo dữ liệu ESPN được hiển thị, không còn lỗi `The result must not have attributes`.
+- Sửa `probatio` thành `voluptuous` ở `__init__.py` và `config_flow.py` để tích hợp có thể import schema Home Assistant.
+- Thêm `panel_entry.js` để hiển thị lỗi cụ thể khi không tải được module dashboard, tránh màn hình trống.
+- Bổ sung nguyên nhân lỗi ESPN lên WebSocket ngay cả khi lần refresh đầu thất bại hoàn toàn.
+- Đồng bộ `manifest.json`, `const.py`, frontend và cấu hình panel ở phiên bản `2026.11.11.5`.
+
+
 ## 2026.11.11.4 — Sửa dashboard và nguồn lịch thi đấu
 
 - Đăng ký trang Football News bằng API `panel_custom` của Home Assistant và khai báo dependency tương ứng.

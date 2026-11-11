@@ -1,7 +1,7 @@
 """Config and options flows, both translatable via translations/{en,vi}.json."""
 from __future__ import annotations
 
-import probatio as vol
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
