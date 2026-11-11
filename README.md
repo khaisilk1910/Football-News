@@ -1,171 +1,216 @@
-# ⚽ Football News — Home Assistant
+<div align="center">
 
-[![Release](https://img.shields.io/github/v/release/khaisilk1910/Football-News?display_name=tag)](https://github.com/khaisilk1910/Football-News/releases)
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.11%2B-18bcf2)](https://www.home-assistant.io/)
-[![Language](https://img.shields.io/badge/ng%C3%B4n%20ng%E1%BB%AF-Ti%E1%BA%BFng%20Vi%E1%BB%87t-20c5bb)](#ng%C3%B4n-ng%E1%BB%AF)
+<img src="custom_components/football_news/brand/icon@2x.png" alt="Biểu tượng Football News: bóng đá, Home Assistant và tin tức, tông đỏ vàng" width="150" />
 
-**Football News** là tích hợp Home Assistant được xây dựng độc lập, cung cấp dashboard bóng đá hiện đại bằng tiếng Việt, lịch thi đấu, tỷ số trực tiếp, kết quả, bảng xếp hạng, tin tức và gửi thông báo qua tích hợp **Zalo Bot**.
+# ⚽ FOOTBALL NEWS
 
-## Cài nhanh trên Marketplace / HACS
+### Lịch thi đấu · Tỷ số trực tiếp · Kết quả · Tin tức bóng đá
 
-[![Mở Football News trong Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=khaisilk1910&repository=Football-News&category=integration)
+**Theo dõi bóng đá ngay trong Home Assistant và nhận thông báo qua Zalo.**
 
-**Nút trên** mở đường dẫn nhanh tới repository trong Home Assistant (trên Home Assistant 2026.11+ đường dẫn HACS cũ được chuyển sang Marketplace). Bạn phải **đẩy mã nguồn lên GitHub và xuất bản GitHub Release thành công trước** vì `hacs.json` bật `zip_release`.
+[![Phiên bản](https://img.shields.io/github/v/release/khaisilk1910/Football-News?label=Phi%C3%AAn%20b%E1%BA%A3n&color=c62828)](https://github.com/khaisilk1910/Football-News/releases)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.11%2B-f9a825)](https://www.home-assistant.io/)
+[![Kiểm tra mã nguồn](https://github.com/khaisilk1910/Football-News/actions/workflows/validate.yml/badge.svg)](https://github.com/khaisilk1910/Football-News/actions/workflows/validate.yml)
+[![Ngôn ngữ](https://img.shields.io/badge/Ng%C3%B4n%20ng%E1%BB%AF-Ti%E1%BA%BFng%20Vi%E1%BB%87t-c62828)](#ng%C3%B4n-ng%E1%BB%AF-v%C3%A0-giao-di%E1%BB%87n)
 
-1. Mở **Settings → Marketplace → Add from link** trong Home Assistant 2026.11+.
-2. Dán `https://github.com/khaisilk1910/Football-News` và bấm **Add**; kết nối GitHub nếu được yêu cầu.
-3. Nếu được hỏi loại repository, chọn **Integration**.
-4. Chọn **Football News → Install** và khởi động lại Home Assistant.
-5. Vào **Settings → Devices & services → Add integration → Football News**, chọn giải đấu.
-6. Mở **Football News** trong thanh bên.
+</div>
 
-**HACS cũ (Home Assistant ≤2026.10):** HACS → ba chấm → Custom repositories → thêm URL ở trên, chọn `Integration`, cài và restart. Mặc dù có thể nhận ZIP, mã nguồn này mới được thiết kế theo API của Home Assistant 2026.11+; chạy trên 2026.10 trở xuống **không được hỗ trợ**.
+<!-- ha-marketplace:exclude-start -->
 
-### Cài thủ công
+## 🚀 THÊM NHANH VÀO HOME ASSISTANT MARKETPLACE
 
-1. Tải mã nguồn từ GitHub Release hoặc ZIP repository.
-2. Chép **duy nhất** thư mục `custom_components/football_news` vào `/config/custom_components/football_news`.
-3. Kiểm tra đường dẫn `/config/custom_components/football_news/manifest.json` tồn tại, không bị lồng hai lớp thư mục.
-4. Khởi động lại Home Assistant, sau đó thêm tích hợp **Football News** qua giao diện.
-5. Cài và cấu hình Zalo Bot riêng nếu muốn gửi Zalo.
+<div align="center">
 
-## Tính năng
+[![Thêm nhanh Football News vào Marketplace](https://img.shields.io/badge/TH%C3%8AM%20NHANH-MARKETPLACE-f9a825?style=for-the-badge&labelColor=b71c1c&logo=homeassistant&logoColor=white)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=khaisilk1910&repository=Football-News&category=integration)
 
-| Nhóm | Chức năng |
-|---|---|
-| Dashboard | Thiết kế đỏ đô và vàng kim, icon bóng đá + Home Assistant + News, tương thích thiết bị di động |
-| Bản địa hóa | Tiếng Việt & tiếng Anh cho dashboard, setup flow, options flow, entity, action |
-| Lịch thi đấu | Trận từ 2 ngày trước đến 8 ngày tới; ngày giờ theo múi giờ cấu hình Home Assistant |
-| Trực tiếp | Trạng thái trước trận/đang thi đấu/kết thúc; tỷ số chưa có không bị chuyển thành `0–0` |
-| Kết quả | Điểm số thực tế từ nguồn dữ liệu; thông tin sân nếu được trả về |
-| Bảng xếp hạng | Vị trí, trận, thắng, hòa, thua, hiệu số và điểm khi dữ liệu có sẵn |
-| Tin tức | Tiêu đề, trích đoạn, thời gian phát hành và liên kết bài gốc (HTTPS) |
-| Zalo | Thử gửi tin, thông báo bắt đầu, nhắc trước trận, kết quả, tin mới; chống gửi trùng bằng lưu trạng thái |
-| Chẩn đoán | Log theo từng nguồn, mốc cập nhật, số lượng dữ liệu và Download diagnostics không chứa ID Zalo |
-| Hiệu năng | Không gửi HTTP tới nhà cung cấp hoặc Zalo lúc startup; polling 60 giây khi có trận trực tiếp, 5 phút khi không có trận; cache riêng cho bảng và tin |
-| Chi tiết trận | Action `football_news.match_details` đọc ESPN summary khi được gọi, không tải mọi chi tiết khi khởi động |
+[![Mở repository trong Home Assistant Marketplace](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=khaisilk1910&repository=Football-News&category=integration)
 
-### Giải đấu cấu hình được
+**[➡️ MỞ FOOTBALL NEWS TRONG MARKETPLACE](https://my.home-assistant.io/redirect/marketplace_repository/?owner=khaisilk1910&repository=Football-News&category=integration)**
 
-Premier League, EFL Championship, LaLiga, Bundesliga, Serie A, Ligue 1, Eredivisie, Primeira Liga, Scottish Premiership, MLS, UEFA Champions League, UEFA Europa League và UEFA Conference League.
+</div>
 
-Các giải đấu phụ thuộc mã giải do ESPN công bố trong API không chính thức. Có thể có mùa giải, bảng xếp hạng hoặc trận thiếu dữ liệu. Việc chọn giải mới tạo một config entry riêng; dashboard mặc định hiển thị giải được cấu hình đầu tiên.
+> **Cách dùng:** Nhấn một trong các nút ở trên, chọn máy chủ Home Assistant, chấp nhận thêm repository nếu được hỏi, rồi chọn **Cài đặt (Install)**. Nút mở trang Marketplace, **không tự cài đặt mà bỏ qua xác nhận**. Cần Home Assistant **2026.11 trở lên** và repository đã chứa mã Football News cùng bản phát hành hợp lệ.
 
-## Dữ liệu và độ tin cậy
+### Nếu nút không mở được Marketplace
 
-- **Nguồn:** endpoint JSON công khai, không chính thức của ESPN (không yêu cầu API key).
-- **Scoreboard**: `site.api.espn.com/apis/site/v2/sports/soccer/{league}/scoreboard`.
-- **Bảng xếp hạng**: `site.api.espn.com/apis/v2/sports/soccer/{league}/standings`.
-- **Tin tức**: `site.api.espn.com/apis/site/v2/sports/soccer/{league}/news`.
-- **Chi tiết trận (theo yêu cầu)**: `site.api.espn.com/apis/site/v2/sports/soccer/{league}/summary?event=...`; chọn nút **Chi tiết** của một trận trên dashboard để tải diễn biến và thống kê có sẵn.
+1. Trong Home Assistant, vào **Cài đặt → Marketplace → Add from link**.
+2. Nhập địa chỉ repository: `https://github.com/khaisilk1910/Football-News`.
+3. Chọn **Add**; kết nối GitHub nếu được yêu cầu. Nếu cần chọn loại nội dung, chọn **Integration**.
+4. Mở **Football News** trong Marketplace và nhấn **Install**.
+5. Khởi động lại Home Assistant nếu hệ thống yêu cầu.
+6. Vào **Cài đặt → Thiết bị & dịch vụ → Thêm tích hợp → Football News** để hoàn tất thiết lập.
 
-Các endpoint này **không phải API được ESPN cam kết hỗ trợ**, có thể thay đổi cấu trúc, giới hạn truy cập hoặc ngừng hoạt động bất kỳ lúc nào. Football News không bịa thông số khi thiếu dữ liệu. Thời gian làm mới và trạng thái lỗi được hiển thị để tiện xác minh. Không dùng dữ liệu này làm cơ sở duy nhất cho hoạt động tài chính/cá cược.
+> Marketplace được tích hợp vào Home Assistant 2026.11. Người dùng phiên bản này không cần cài HACS riêng.
 
-## Cấu hình thông báo Zalo
+<!-- ha-marketplace:exclude-end -->
 
-Football News **không đăng nhập trực tiếp vào Zalo** và không nhận/lưu mật khẩu Zalo; ứng dụng chuyển tin qua action `zalo_bot.send_message` của custom integration Zalo Bot đã cài đặt.
+## 🌟 Football News mang đến những gì?
 
-Yêu cầu: cài `zalo_bot` và Zalo Bot Server tương thích, kiểm tra tài khoản Zalo đang đăng nhập, bật entity **Markdown** trong Zalo Bot để nhận rich-text. Xem [repo Zalo Bot](https://github.com/khaisilk1910/zalo-bot-hacs) và [Zalo Bot Server](https://github.com/khaisilk1910/zalo-bot-server).
+Football News tập trung vào ba trải nghiệm: **xem bóng đá nhanh**, **nhận thông báo đúng thời điểm** và **quản lý mọi thứ ngay trên Home Assistant**.
 
-1. **Settings → Devices & services → Football News → Configure**.
-2. Chọn **Ngôn ngữ dashboard: Tiếng Việt**.
-3. Tùy chọn **Lọc tên đội bóng**, ví dụ `Arsenal` (để trống = mọi đội của giải).
-4. Bật **Bật thông báo Zalo**.
-5. Điền `account_selection` (số tài khoản gửi đang đăng nhập trong Zalo Bot), `thread_id` dạng **chuỗi ký tự**, và `type` (`0` = người dùng, `1` = nhóm).
-6. Bật hoặc tắt từng thông báo: **lịch thi đấu**, **bắt đầu trận**, **kết quả**, **tin tức**. Chọn nhắc trước **5–120 phút**.
-7. Lưu cấu hình và chạy action `football_news.test_zalo` để kiểm tra.
+| Khu vực | Nội dung |
+|:--|:--|
+| 🏟️ Trung tâm trận đấu | Lịch thi đấu, trận đang diễn ra, kết quả, tỷ số, giờ thi đấu và sân vận động khi nguồn có dữ liệu |
+| 📊 Bảng xếp hạng | Vị trí, số trận, thắng/hòa/thua, hiệu số, điểm số theo dữ liệu được cung cấp |
+| 📰 Tin tức | Tiêu đề, tóm tắt, thời điểm xuất bản và liên kết đến nguồn bài báo |
+| 🔔 Thông báo Zalo | Nhắc trước giờ bóng lăn, bắt đầu trận, kết quả và tin mới; có công tắc bật/tắt từng loại |
+| 🧩 Home Assistant | Cấu hình bằng giao diện, tạo cảm biến, thực thi action, tải chẩn đoán và theo dõi log |
+| ⚡ Hiệu năng | Không gọi API bóng đá hoặc Zalo trong quá trình thiết lập/khởi động; dữ liệu được cập nhật sau khi HA hoạt động |
 
-Đối với Zalo ID dài, nhập `zalo:2036121378794772276` (minh họa) thay vì ép sang số. Thao tác này bảo toàn ID khi đi qua JSON/JavaScript. Không sử dụng `| int` hoặc `| float` cho Zalo ID. Không điền ID cá nhân thật vào GitHub, issue hoặc file YAML công khai.
+### Các giải đấu hỗ trợ
 
-### Tin nhắn được định dạng theo README Zalo
+- **Anh:** Premier League, EFL Championship.
+- **Tây Ban Nha:** LaLiga.
+- **Đức:** Bundesliga.
+- **Ý:** Serie A.
+- **Pháp:** Ligue 1.
+- **Hà Lan:** Eredivisie.
+- **Bồ Đào Nha:** Primeira Liga.
+- **Scotland:** Scottish Premiership.
+- **Mỹ:** Major League Soccer (MLS).
+- **Châu Âu:** UEFA Champions League, UEFA Europa League, UEFA Conference League.
 
-**Nhắc lịch thi đấu:**
+Tổng cộng **13 giải đấu** được cấu hình sẵn. Mỗi giải đấu có thể được thêm dưới dạng một cấu hình riêng. Khả năng hiển thị trận, bảng xếp hạng và tin phụ thuộc dữ liệu từ nhà cung cấp.
+
+## 🎨 Ngôn ngữ và giao diện
+
+- **Tiếng Việt** cho giao diện, các bước cấu hình, entity và action; có thêm bản dịch tiếng Anh.
+- Thiết kế **đỏ đô – đỏ tươi – vàng kim** với biểu tượng kết hợp **quả bóng, Home Assistant và News**.
+- Dashboard sử dụng giao diện linh hoạt trên điện thoại, máy tính bảng và máy tính.
+- Ngày giờ hiển thị theo múi giờ Home Assistant. Tên câu lạc bộ, giải đấu và tiêu đề báo giữ nguyên từ nguồn để tránh dịch sai tên riêng.
+
+> Football News là dự án cộng đồng độc lập, không phải sản phẩm chính thức của Home Assistant, ESPN hoặc Zalo.
+
+## 🛠️ Thiết lập lần đầu
+
+1. Cài Football News qua Marketplace (hoặc cài thủ công ở phần bên dưới).
+2. Mở **Cài đặt → Thiết bị & dịch vụ → Thêm tích hợp**, tìm **Football News**.
+3. Chọn giải đấu muốn theo dõi; ví dụ **Premier League**.
+4. Vào **Football News → Cấu hình (Configure)** để chọn ngôn ngữ, bộ lọc tên đội bóng và thông báo.
+5. Mở mục **Football News** trên thanh bên Home Assistant để xem dashboard.
+
+Không cần tạo tài khoản ESPN hoặc nhập khóa API. Nếu muốn theo dõi nhiều giải, thêm các cấu hình giải đấu riêng.
+
+<!-- ha-marketplace:exclude-start -->
+
+### Cài đặt thủ công
+
+Nếu không sử dụng Marketplace, tải mã từ [trang phát hành](https://github.com/khaisilk1910/Football-News/releases), giải nén và chép thư mục:
+
+```text
+custom_components/football_news
+```
+
+vào thư mục cấu hình Home Assistant:
+
+```text
+/config/custom_components/football_news
+```
+
+Kiểm tra file `/config/custom_components/football_news/manifest.json` tồn tại, sau đó khởi động lại Home Assistant và tiến hành thiết lập như trên. **Không** chép cả thư mục `Football-News` vào `custom_components`.
+
+<!-- ha-marketplace:exclude-end -->
+
+## 📲 Cấu hình thông báo Zalo
+
+Football News gửi tin qua action `zalo_bot.send_message`, **không tự đăng nhập Zalo** và **không lưu mật khẩu Zalo Bot Server**.
+
+**Điều kiện:** Bạn đã cài và cấu hình [Zalo Bot cho Home Assistant](https://github.com/khaisilk1910/zalo-bot-hacs); Zalo Bot Server tương thích và tài khoản gửi đang hoạt động. Để hiển thị chữ đậm, màu và cỡ chữ, hãy bật tính năng **Markdown** trong tích hợp Zalo Bot.
+
+Trong **Thiết bị & dịch vụ → Football News → Configure**, nhập:
+
+| Mục | Ý nghĩa |
+|:--|:--|
+| **Bật thông báo Zalo** | Cho phép Football News gửi thông báo |
+| **Tài khoản gửi (`account_selection`)** | Tài khoản đã đăng nhập trên Zalo Bot |
+| **ID cuộc trò chuyện (`thread_id`)** | ID cá nhân/nhóm, nên sử dụng cú pháp `zalo:<ID>` để tránh mất độ chính xác |
+| **Loại cuộc trò chuyện** | `0` = cá nhân; `1` = nhóm |
+| **Nhắc lịch thi đấu** | Gửi trước giờ trận theo khoảng phút đã chọn, từ 5 đến 120 phút |
+| **Thông báo bắt đầu trận** | Gửi khi dữ liệu chuyển từ trạng thái chưa bắt đầu sang đang diễn ra |
+| **Thông báo kết quả** | Gửi khi dữ liệu chuyển sang kết thúc và có tỷ số hợp lệ |
+| **Thông báo tin tức** | Gửi bài mới đủ điều kiện, không phát lại hàng loạt tin cũ ở lần tải đầu tiên |
+| **Bộ lọc đội bóng** | Chỉ thông báo trận có tên đội khớp nội dung lọc; để trống để theo dõi cả giải |
+
+Sau khi lưu, chạy action **`football_news.test_zalo`** trong Công cụ nhà phát triển để thử gửi tin.
+
+### Mẫu thông báo trên Zalo
+
+Các mẫu dưới đây mô tả cách Football News định dạng tin theo cú pháp rich-text được hỗ trợ trong README của Zalo Bot. Nội dung và thời gian thực tế lấy từ dữ liệu trận/tin của nguồn.
+
+**⏰ Trước trận:**
 
 ```text
 {big}{orange}**⏰ FOOTBALL NEWS · SẮP THI ĐẤU**{/orange}{/big}
-**Arsenal**  ⚔️  **Chelsea**
+**Đội chủ nhà**  ⚔️  **Đội khách**
 🏆 Premier League
-🗓 12/11 02:45
-🏟 Emirates Stadium
+🗓 19/11 21:00
+🏟 Sân vận động
 {small}Lịch có thể thay đổi · Giờ theo múi giờ Home Assistant{/small}
 ```
 
-**Kết quả trận đấu:**
+**🏁 Kết thúc trận:**
 
 ```text
 {big}{green}**🏁 FOOTBALL NEWS · KẾT QUẢ**{/green}{/big}
-**Arsenal**  ⚔️  **Chelsea**
+**Đội chủ nhà**  ⚔️  **Đội khách**
 {big}**2 - 1**{/big}
 🏆 Premier League
-🗓 12/11 02:45
 {small}Kết quả theo dữ liệu ESPN · Home Assistant{/small}
 ```
 
-**Tin tức:**
+**📰 Tin tức:**
 
 ```text
 {big}{green}**📰 FOOTBALL NEWS · TIN MỚI**{/green}{/big}
-[Tiêu đề lấy nguyên từ dữ liệu nguồn]
+Tiêu đề bài viết từ nguồn
 🏆 Premier League
 🔗 https://www.espn.com/...
 {small}Nguồn: ESPN · Thông báo từ Home Assistant{/small}
 ```
 
-Các format chỉ dùng style có trong tài liệu Zalo Bot: `**bold**`, `{big}`, `{small}`, `{green}`, `{orange}`; không truyền màu HEX không được hỗ trợ. Zalo Server nhận `thread_id` kiểu chuỗi và gửi message theo đúng action:
+**Lưu ý kỹ thuật:** Tin được chuyển qua action `zalo_bot.send_message`, dùng các thẻ `{big}`, `{small}`, `{orange}`, `{green}` và Markdown. Zalo ID lớn phải giữ dưới dạng **chuỗi**. Tránh dùng `int`/`float` trong template với ID Zalo.
 
-```yaml
-action: zalo_bot.send_message
-data:
-  account_selection: "+84123456789"     # Thay bằng tài khoản gửi của bạn
-  thread_id: "zalo:2036121378794772276"  # Ví dụ, thay bằng ID của bạn
-  type: "1"                              # 1 = group, 0 = user
-  message: |
-    {big}{green}**⚽ FOOTBALL NEWS**{/green}{/big}
-    Thử định dạng từ Home Assistant.
-```
+## ⚙️ Tối ưu hiệu năng và độ chính xác
 
-**Cách hoạt động:** nhắc lịch gửi một lần trong cửa sổ đã cấu hình, thông báo bắt đầu/kết quả chỉ gửi khi nhận thấy thay đổi trạng thái trận; tin mới gửi tối đa các bài mới gần đây, không gửi hàng loạt bài cũ ở lần khởi chạy đầu tiên. Dedupe lưu trong Home Assistant `.storage` qua `Store`. Nếu HA ngắt mạng hoặc tắt máy lúc diễn ra sự kiện, thông báo bị bỏ lỡ có thể không được gửi bù. Việc nhận tin phụ thuộc tài khoản, Zalo Server và quyền hạn nhóm.
+- **Khởi động nhẹ:** Không bắt Home Assistant chờ phản hồi ESPN hoặc Zalo khi nạp tích hợp.
+- **Tần suất phù hợp:** Khoảng 60 giây nếu có trận đang diễn ra; 5 phút khi không có trận trực tiếp. Bảng xếp hạng và tin tức sử dụng bộ nhớ đệm riêng để giảm yêu cầu mạng.
+- **Không tự tạo tỷ số:** Dữ liệu thiếu được giữ ở trạng thái chưa xác định, không thay thành kết quả `0–0`.
+- **Lưu dữ liệu hợp lệ gần nhất:** Lỗi mạng tạm thời không tự động xóa dữ liệu đã lấy được trong phiên chạy hiện tại.
+- **Không gửi trùng tùy tiện:** Lưu dấu trạng thái/thông báo đã xử lý; thông báo vẫn có thể bị bỏ lỡ nếu Home Assistant tắt hoặc mất mạng đúng thời điểm.
+- **Chi tiết theo yêu cầu:** Dữ liệu chi tiết trận chỉ được lấy khi mở trận hoặc gọi action, không tải tất cả trong lúc khởi động.
 
-## Các action Home Assistant
+**Nguồn dữ liệu hiện tại:** Các endpoint JSON công khai nhưng **không chính thức** của ESPN. Chúng có thể thay đổi hoặc ngừng hoạt động mà không báo trước; không phải tất cả giải đấu đều cung cấp cùng mức chi tiết.
 
-### `football_news.refresh`
+## 🧰 Action và cảm biến
 
-```yaml
-action: football_news.refresh
-data: {}
-```
+Các action sử dụng domain `football_news`:
 
-### `football_news.test_zalo`
+| Action | Công dụng |
+|:--|:--|
+| `football_news.refresh` | Yêu cầu làm mới dữ liệu |
+| `football_news.test_zalo` | Gửi thử một tin thông báo Zalo |
+| `football_news.match_details` | Lấy dữ liệu chi tiết của một trận từ ID ESPN (có phản hồi trả về) |
 
-```yaml
-action: football_news.test_zalo
-data: {}
-```
-
-### `football_news.match_details`
+Ví dụ gọi chi tiết trận bằng YAML:
 
 ```yaml
 action: football_news.match_details
 data:
-  event_id: "401234567" # ví dụ, thay bằng mã trận thực tế
-response_variable: football_match
+  event_id: "401234567"  # Thay bằng ID trận thực tế
+response_variable: chi_tiet_tran
 ```
 
-Nếu có nhiều giải, nhập thêm `entry_id` trong action để chọn cấu hình cụ thể. Mã trận là ID từ ESPN; action trả `header`, `boxscore`, `key_events`, `scoring_plays` có sẵn, không tự tạo dữ liệu giả.
+Mỗi giải tạo thiết bị Football News với các cảm biến tóm tắt như số trận trực tiếp, số trận sắp tới, số tin, trận tiếp theo, lần cập nhật và khả năng kết nối nguồn. Tên/ID thực tế được Home Assistant tạo theo cấu hình của bạn.
 
-## Entity được tạo
+## 🩺 Khi có lỗi hoặc dữ liệu không cập nhật
 
-Mỗi giải được cấu hình tạo thiết bị `Football News · <league>` với các entity: **Số trận trực tiếp**, **Số trận sắp diễn ra**, **Số tin tức**, **Lịch trận tiếp theo**, **Lần cập nhật dữ liệu**, **Nguồn dữ liệu sẵn sàng**. ID entity thực tế do Home Assistant sinh và có thể khác nhau. Dữ liệu chi tiết tải qua websocket khi mở dashboard, không đưa toàn bộ tin tức vào thuộc tính sensor để tránh tăng kích thước Recorder.
+1. Mở dashboard và kiểm tra mốc **cập nhật gần nhất** cùng trạng thái nguồn.
+2. Thử action `football_news.refresh` để yêu cầu làm mới.
+3. Xem **Cài đặt → Hệ thống → Nhật ký**, tìm `football_news`.
+4. Mở **Cài đặt → Thiết bị & dịch vụ → Football News → Tải chẩn đoán** để lấy thông tin hỗ trợ đã hạn chế dữ liệu nhạy cảm.
+5. Nếu không gửi được Zalo, kiểm tra tích hợp `zalo_bot`, tài khoản gửi, ID cuộc trò chuyện và quyền gửi tin vào nhóm.
 
-## Ngôn ngữ
-
-- Chuyển ngôn ngữ Home Assistant sang tiếng Việt để các bản dịch config/options/action/entity hiển thị bằng tiếng Việt.
-- Vào **Football News → Configure** để chọn tiếng Việt/English cho dashboard.
-- Tên riêng của đội bóng, giải đấu, bài báo là dữ liệu gốc của nhà cung cấp, **không dịch máy** để tránh bóp méo thông tin.
-
-## Log và chẩn đoán
-
-Mở **Settings → System → Logs**, lọc `football_news`. Có thể bật debug trong `configuration.yaml`:
+Để xem log chi tiết, thêm vào `configuration.yaml`:
 
 ```yaml
 logger:
@@ -174,34 +219,25 @@ logger:
     custom_components.football_news: debug
 ```
 
-Khởi động lại HA sau khi đổi YAML. Log hiển thị nhóm dữ liệu lỗi và HTTP status, không hiển thị nội dung tin hoặc ID Zalo. Tại **Settings → Devices & services → Football News → Download diagnostics** để tải chẩn đoán (chỉ tổng số mục, thời gian thành công và flag thông báo).
+Không đăng mật khẩu, token hoặc Zalo ID thật vào issue công khai. Có thể [báo lỗi tại GitHub Issues](https://github.com/khaisilk1910/Football-News/issues).
 
-Nếu có nguồn trả về lỗi mạng: Football News giữ kết quả gần nhất trong bộ nhớ của phiên HA hiện tại và hiển thị cảnh báo. Sau restart mà mất mạng, sensor có thể `unavailable` đến khi dữ liệu tải được. Bảng xếp hạng giữ cache 6 giờ, tin tức 30 phút, lịch thi đấu tối đa 60 giây trong bộ nhớ; không ghi raw provider JSON vào `.storage`.
+## 📦 Cập nhật và phát hành
 
-## Repository và phát hành bản đầu tiên
+Phiên bản mã nguồn hiện tại: **2026.11.11.2**. Cập nhật qua **Cài đặt → Marketplace** hoặc trang **Updates** khi bản phát hành mới xuất hiện. Với bản cài thủ công, thay thư mục `custom_components/football_news` rồi khởi động lại Home Assistant.
 
-Cấu trúc:
+Dành cho người duy trì repository:
 
-```text
-Football-News/
-├── .github/workflows/{validate.yml,release.yml}
-├── .gitignore
-├── LICENSE
-├── README.md
-├── CHANGELOG.md
-├── hacs.json
-├── custom_components/football_news/
-│   ├── __init__.py, config_flow.py, coordinator.py
-│   ├── provider.py, models.py, notifications.py
-│   ├── sensor.py, binary_sensor.py, diagnostics.py
-│   ├── manifest.json, services.yaml, strings.json
-│   ├── translations/{vi.json,en.json}
-│   ├── brand/{icon.png,icon@2x.png}
-│   └── frontend/panel.js
-└── tests/
-```
+- Đưa **toàn bộ nội dung repository**, bao gồm `.github` và `.gitignore`, lên `https://github.com/khaisilk1910/Football-News`, không chỉ file ZIP cài đặt.
+- Chạy [quy trình kiểm tra mã nguồn](https://github.com/khaisilk1910/Football-News/actions/workflows/validate.yml) và xử lý lỗi nếu có.
+- Tạo Git tag **`v2026.11.11.2`** trùng phiên bản trong `manifest.json` và `const.py`. Quy trình `.github/workflows/release.yml` tự xây dựng ZIP, kiểm tra và tạo GitHub Release kèm **`football_news.zip`** cho ai cần cài thủ công.
+- Marketplace cài trực tiếp thư mục `custom_components/football_news` từ mã nguồn GitHub, nên **không bắt buộc tải asset ZIP**. Vẫn nên tạo GitHub Release mới để cập nhật rõ ràng. Không dùng tag cũ `v2026.11.11.1` cho mã mới.
 
+**Nếu gặp lỗi 404 khi cài:** đây là tình trạng bản cũ bật `zip_release: true` nhưng Release GitHub thiếu `football_news.zip`. Hãy đưa **trọn bộ repository mới** (cả thư mục ẩn `.github` và file `.gitignore`) lên nhánh `main`, tạo Release `v2026.11.11.2` từ commit mới, sau đó tải lại thông tin repository trong Marketplace và cài đặt. Xem [hướng dẫn xuất bản và sửa lỗi](RELEASE.md).
 
-## Giấy phép và lưu ý
+File **`.gitignore`** nằm ở **thư mục gốc** của repository, cùng cấp `README.md`, `LICENSE` và `hacs.json`. File có dấu chấm đầu tên nên có thể bị ẩn trong trình quản lý tập tin. Gói **repository ZIP** chứa file này; gói cài **`football_news.zip`** không cần chứa nó.
 
-Mã mới trong repository này dùng **MIT**; tài sản icon được tạo riêng cho Football News. Không sử dụng code/hình ảnh của dự án Football Hub có giấy phép hạn chế. Tên giải, CLB và nhãn hiệu dữ liệu thuộc chủ sở hữu tương ứng. Football News không liên kết hoặc được ESPN, Zalo, Home Assistant, HACS hay các ban tổ chức giải đấu bảo trợ.
+## 🔐 Giấy phép và ghi nhận
+
+Football News là một tích hợp độc lập có giấy phép **MIT**; chi tiết nằm trong [LICENSE](LICENSE). Dự án không dùng mã nguồn hoặc hình ảnh có giấy phép hạn chế của Football Hub. Logo/nền tảng Home Assistant, tên đội, giải đấu, nhà cung cấp và Zalo thuộc chủ sở hữu tương ứng; việc xuất hiện trong phần mô tả không có nghĩa dự án được họ chứng nhận.
+
+**Liên kết:** [Mã nguồn](https://github.com/khaisilk1910/Football-News) · [Phiên bản](https://github.com/khaisilk1910/Football-News/releases) · [Báo lỗi](https://github.com/khaisilk1910/Football-News/issues) · [Lịch sử thay đổi](CHANGELOG.md)

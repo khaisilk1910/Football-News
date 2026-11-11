@@ -1,5 +1,13 @@
 # Changelog — Football News
 
+## 2026.11.11.2 — 2026-11-11
+
+- Sửa cài đặt Marketplace 404: bỏ yêu cầu `zip_release`, dùng cấu trúc nguồn chuẩn `custom_components/football_news`.
+- Vẫn tạo `football_news.zip` đính kèm GitHub Release để tải và cài thủ công.
+- Tự kiểm tra đồng bộ phiên bản Git tag, `manifest.json`, `const.py` và cấu trúc repository.
+- Bổ sung workflow phát hành hỗ trợ chạy lại thủ công và tài liệu RELEASE.md.
+
+
 ## 1.0.1 — 2026-11-11
 
 - Thiết kế lại icon bóng đá, biểu tượng Home Assistant, báo NEWS với tông đỏ–vàng.

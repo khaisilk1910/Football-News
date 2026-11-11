@@ -1,7 +1,4 @@
 {
   "name": "Football News",
-  "homeassistant": "2026.11.0",
-  "render_readme": true,
-  "zip_release": true,
-  "filename": "football_news.zip"
+  "homeassistant": "2026.11.0"
 }
