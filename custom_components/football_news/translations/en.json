@@ -100,52 +100,6 @@
           "description": "Numeric ID from a Football News fixture."
         }
       }
-    },
-    "manage_competition": {
-      "name": "Manage a prediction league",
-      "description": "Create LMS/Acca leagues, add players, configure rounds, submit picks, record payments and buybacks.",
-      "fields": {
-        "operation": {
-          "name": "Operation"
-        },
-        "competition_id": {
-          "name": "Competition ID"
-        },
-        "kind": {
-          "name": "League type"
-        },
-        "title": {
-          "name": "Title"
-        },
-        "league": {
-          "name": "Football competition"
-        },
-        "player_id": {
-          "name": "Player ID"
-        },
-        "player_name": {
-          "name": "Player name"
-        },
-        "round_id": {
-          "name": "Round ID"
-        },
-        "deadline": {
-          "name": "ISO8601 deadline"
-        },
-        "fixture_ids": {
-          "name": "ESPN fixture IDs"
-        },
-        "picks": {
-          "name": "Selections"
-        },
-        "amount": {
-          "name": "Amount paid"
-        }
-      }
-    },
-    "get_competitions": {
-      "name": "List prediction leagues",
-      "description": "Fetch private league standings; pending picks are hidden."
     }
   }
 }

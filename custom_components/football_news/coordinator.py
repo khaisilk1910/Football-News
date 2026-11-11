@@ -25,10 +25,11 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.entry = entry
         self.provider = provider
         self.notifier = None
-        self.predictions = None
         self._dataset_updates: dict[str, datetime] = {}
         self._data: dict[str, Any] = {"fixtures": [], "standings": [], "news": []}
         self._notification_lock = asyncio.Lock()
+        self._last_errors: list[str] = []
+        self._attempted_refresh = False
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Only poll scoreboard each cycle; expensive feeds obey separate TTLs."""
@@ -47,6 +48,8 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._data[name] = result
                 self._dataset_updates[name] = datetime.now(timezone.utc)
                 updated.append(name)
+        self._attempted_refresh = True
+        self._last_errors = failures[:3]
         # Do not replace good data if the upstream request has a transient failure.
         if failures:
             _LOGGER.warning("Football News refresh partial failure: %s", "; ".join(failures))
@@ -64,6 +67,4 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.notifier is not None:
             # Do not block entity updates or Home Assistant startup on Zalo I/O.
             self.hass.async_create_task(self.notifier.process(result))
-        if self.predictions is not None:
-            self.hass.async_create_task(self.predictions.auto_settle(result["fixtures"]))
         return result

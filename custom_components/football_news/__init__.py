@@ -6,7 +6,7 @@ from pathlib import Path
 
 import probatio as vol
 from homeassistant.components import websocket_api
-from homeassistant.components.frontend import async_register_built_in_panel
+from homeassistant.components.panel_custom import async_register_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -19,7 +19,6 @@ from .notifications import ZaloNotifier
 from .provider import FootballProvider, ProviderError
 from .models import normalize_summary
 from .preferences import FootballPreferences
-from .predictions import PredictionsStore
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ("sensor", "binary_sensor")
@@ -166,39 +165,22 @@ async def ws_toggle_favourite(hass: HomeAssistant, connection, msg):
     connection.send_result(msg["id"], await prefs.read())
 
 
-@websocket_api.websocket_command({"type": "football_news/competitions"})
-@websocket_api.async_response
-async def ws_competitions(hass: HomeAssistant, connection, msg):
-    if not connection.user.is_admin:
-        connection.send_error(msg["id"], "unauthorized", "Administrator required")
-        return
-    connection.send_result(msg["id"], {"competitions": await hass.data[DOMAIN]["predictions"].all()})
-
-
-async def _admin_only(hass: HomeAssistant, context) -> None:
-    if context.user_id:
-        user = await hass.auth.async_get_user(context.user_id)
-        if not user or not user.is_admin:
-            raise HomeAssistantError("Only Home Assistant administrators may manage competitions")
-
-
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register static resources and actions only; never contact upstream here."""
     hass.data.setdefault(DOMAIN, {"entries": {}})
     hass.data[DOMAIN]["preferences"] = FootballPreferences(hass)
-    hass.data[DOMAIN]["predictions"] = PredictionsStore(hass)
     await hass.http.async_register_static_paths([
         StaticPathConfig("/football_news/panel.js", str(_ROOT / "frontend" / "panel.js"), False),
         StaticPathConfig("/football_news/icon.png", str(_ROOT / "brand" / "icon.png"), False),
     ])
-    async_register_built_in_panel(
-        hass, component_name="custom", sidebar_title="Football News",
-        sidebar_icon="mdi:soccer", frontend_url_path="football-news",
-        config={"_panel_custom": {
-            "name": "football-news-panel",
-            "module_url": f"/football_news/panel.js?v={VERSION}",
-            "embed_iframe": False, "trust_external": False,
-        }}, require_admin=False, update="football-news" in hass.data.get("frontend_panels", {}),
+    await async_register_panel(
+        hass,
+        frontend_url_path="football-news",
+        webcomponent_name="football-news-panel",
+        sidebar_title="Football News",
+        sidebar_icon="mdi:soccer",
+        module_url=f"/football_news/panel.js?v={VERSION}",
+        require_admin=False,
     )
     websocket_api.async_register_command(hass, ws_get_data)
     websocket_api.async_register_command(hass, ws_match)
@@ -206,7 +188,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, ws_club)
     websocket_api.async_register_command(hass, ws_leaders)
     websocket_api.async_register_command(hass, ws_toggle_favourite)
-    websocket_api.async_register_command(hass, ws_competitions)
 
     async def refresh(call: ServiceCall):
         runtime = _runtime(hass, call.data.get("entry_id", ""))
@@ -244,33 +225,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             "scoring_plays": payload.get("scoringPlays", [])[:40],
         }
 
-    async def manage_competition(call: ServiceCall):
-        await _admin_only(hass, call.context)
-        try:
-            return await hass.data[DOMAIN]["predictions"].mutate(call.data["operation"], dict(call.data))
-        except (ValueError, KeyError, TypeError) as err:
-            raise HomeAssistantError(f"Competition validation failed: {err}") from err
-
-    async def get_competitions(call: ServiceCall):
-        await _admin_only(hass, call.context)
-        return {"competitions": await hass.data[DOMAIN]["predictions"].all()}
-
-    hass.services.async_register(
-        DOMAIN, "manage_competition", manage_competition,
-        schema=vol.Schema({
-            vol.Required("operation"): vol.In(["create", "add_player", "round", "pick", "payment", "buyback"]),
-            vol.Optional("competition_id"): str,
-            vol.Optional("kind"): vol.In(["lms", "acca"]),
-            vol.Optional("title"): str, vol.Optional("league"): vol.In(LEAGUES),
-            vol.Optional("player_id"): str, vol.Optional("player_name"): str,
-            vol.Optional("round_id"): str, vol.Optional("deadline"): str,
-            vol.Optional("fixture_ids"): [str], vol.Optional("picks"): [dict],
-            vol.Optional("amount"): vol.Coerce(float),
-        }), supports_response=SupportsResponse.ONLY,
-    )
-    hass.services.async_register(
-        DOMAIN, "get_competitions", get_competitions, supports_response=SupportsResponse.ONLY,
-    )
     hass.services.async_register(DOMAIN, "refresh", refresh, schema=vol.Schema({vol.Optional("entry_id"): str}))
     hass.services.async_register(DOMAIN, "test_zalo", test_zalo, schema=vol.Schema({vol.Optional("entry_id"): str}))
     hass.services.async_register(
@@ -289,7 +243,6 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     coordinator = FootballNewsCoordinator(hass, entry, provider)
     notifier = ZaloNotifier(hass, entry, LEAGUES.get(league, league))
     coordinator.notifier = notifier
-    coordinator.predictions = hass.data[DOMAIN]["predictions"]
     entry.runtime_data = {"coordinator": coordinator, "notifier": notifier}
     hass.data.setdefault(DOMAIN, {"entries": {}})["entries"][entry.entry_id] = {
         "entry": entry, "coordinator": coordinator, "notifier": notifier,

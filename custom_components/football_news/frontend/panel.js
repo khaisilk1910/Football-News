@@ -12,7 +12,7 @@ const FN_WORDS = {
     kickoff:'Bắt đầu',final:'Kết thúc',pregame:'Chưa bắt đầu',unknown:'Chưa xác định',error:'Sự cố tải dữ liệu',
     read:'Xem bài gốc',details:'Chi tiết',events:'Diễn biến',statistics:'Thống kê',attendance:'Khán giả',close:'Đóng',noDetails:'Nguồn chưa cung cấp chi tiết trận này.',loadingDetails:'Đang lấy chi tiết trận đấu…',timezone:'Múi giờ',view:'Xem tất cả',browser:'Thời gian theo thiết bị của bạn',
     note:'Football News lấy dữ liệu từ API công khai không chính thức của ESPN. Thời gian và kết quả có thể thay đổi.',
-    stale:'Nếu dữ liệu chưa cập nhật, hãy thử làm mới.',logo:'Biểu tượng Football News',
+    stale:'Nếu dữ liệu chưa cập nhật, hãy thử làm mới.',connectionHelp:'Kiểm tra log và cấu hình tích hợp. Có thể thử tải lại trang hoặc khởi động lại Home Assistant.',setupHelp:'Chưa có giải đấu được cấu hình. Vào Cài đặt → Thiết bị & dịch vụ → Thêm tích hợp → Football News, sau đó chọn giải đấu.',logo:'Biểu tượng Football News',
   },
   en: {
     live:'Live',fixtures:'Fixtures',results:'Results',table:'Standings',news:'News',overview:'Overview',
@@ -26,7 +26,7 @@ const FN_WORDS = {
     kickoff:'Kickoff',final:'Full time',pregame:'Scheduled',unknown:'Not confirmed',error:'Data update issue',
     read:'Read source',details:'Details',events:'Match events',statistics:'Statistics',attendance:'Attendance',close:'Close',noDetails:'Further match details are unavailable.',loadingDetails:'Loading match details…',timezone:'Timezone',view:'View all',browser:'Times shown in your device timezone',
     note:'Football News uses ESPN public, undocumented endpoints. Dates and results may change.',
-    stale:'If data looks outdated, try refreshing.',logo:'Football News emblem',
+    stale:'If data looks outdated, try refreshing.',connectionHelp:'Check the integration logs and configuration, then reload this page or restart Home Assistant.',setupHelp:'No league is configured. Open Settings → Devices & services → Add integration → Football News.',logo:'Football News emblem',
   },
 };
 const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -51,33 +51,25 @@ const STYLE = `
 `;
 /* The interface is independent of Football Hub assets and scripts. */
 Object.assign(FN_WORDS.vi, {
-  clubs:'Câu lạc bộ của tôi', competitions:'Giải dự đoán', leaders:'Cầu thủ nổi bật',
+  clubs:'Câu lạc bộ của tôi', leaders:'Cầu thủ nổi bật',
   allLeagues:'Mọi giải đã cài', selectLeague:'Chọn giải để xem bảng xếp hạng hoặc cầu thủ',
   favourites:'Yêu thích', pinned:'Ưu tiên', unpin:'Bỏ ưu tiên', favouriteLimit:'Tối đa 5 câu lạc bộ',
   squad:'Danh sách cầu thủ', standingsTitle:'Bảng xếp hạng', leaderCategory:'Hạng mục',
   official:'Trọng tài', weather:'Thời tiết', detailsClub:'Thông tin câu lạc bộ',
   league:'Giải đấu', noClubs:'Chưa chọn câu lạc bộ nào. Dùng ngôi sao cạnh tên đội trong lịch thi đấu.',
-  noCompetition:'Chưa có giải dự đoán. Quản trị viên có thể tạo bằng action football_news.manage_competition.',
-  rounds:'Vòng', players:'Người chơi', fund:'Quỹ', score:'Điểm', active:'Đang thi đấu',
-  adminOnly:'Chỉ quản trị viên Home Assistant được xem và quản lý giải dự đoán.',
-  instructions:'Quản trị dự đoán: dùng các action football_news.manage_competition và football_news.get_competitions.',
   sources:'Thông tin từ các giải đấu bạn đã cấu hình', dataUnavailable:'Nguồn chưa cung cấp dữ liệu này.',
   monthTitle:'Lịch theo tháng', monthLoad:'Xem tháng', monthSelected:'Chọn một giải trước khi tìm theo tháng',
   notifications:'Thông báo theo trận', sound:'Âm báo trong trình duyệt', soundOff:'Tắt âm báo',
   soundOn:'Bật âm báo', alertHint:'Đánh dấu trận để ưu tiên thông báo; nếu không đánh dấu, áp dụng bộ lọc chung.',
 });
 Object.assign(FN_WORDS.en, {
-  clubs:'My Clubs', competitions:'Predictions', leaders:'Player leaders',
+  clubs:'My Clubs', leaders:'Player leaders',
   allLeagues:'All configured leagues', selectLeague:'Select a league to view standings or leaders',
   favourites:'Favourites', pinned:'Pinned', unpin:'Unpin', favouriteLimit:'Up to five clubs',
   squad:'Squad', standingsTitle:'Standings', leaderCategory:'Category',
   official:'Referee', weather:'Weather', detailsClub:'Club details', league:'Competition',
   noClubs:'No clubs yet. Use the star beside a team in the match list.',
-  noCompetition:'No prediction competitions. Admins can use football_news.manage_competition.',
-  rounds:'Rounds', players:'Players', fund:'Fund', score:'Points', active:'Active',
-  adminOnly:'Home Assistant administrators only.',
-  instructions:'Manage predictions using football_news.manage_competition and football_news.get_competitions.',
-  sources:'Data from your configured competitions', dataUnavailable:'This data is not available from the provider.',
+  sources:'Data from your configured leagues', dataUnavailable:'This data is not available from the provider.',
   monthTitle:'Monthly fixtures', monthLoad:'Load month', monthSelected:'Select a league before loading a month',
   notifications:'Match alerts', sound:'Browser sound', soundOff:'Sound off', soundOn:'Sound on',
   alertHint:'Star matches for targeted alerts; with no starred matches, use the general filter.',
@@ -91,8 +83,6 @@ const MORE_STYLE = `
 .matchhead .mini{display:flex;align-items:center;gap:7px}.minor{font-size:11px;color:#dfaa9e}
 .club-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #65303b;flex-wrap:wrap}
 .club-row strong{flex:1;min-width:120px}.tiny{font-size:12px;color:#dfbfb4}.club-row button{border-radius:8px;background:#552231;border:1px solid #a24855;color:#ffe294;padding:7px 10px}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px}
-.stats-tile{padding:14px;background:#2d131e;border:1px solid #6d3942;border-radius:13px}
 .stats-tile b{display:block;color:#ffd356;font-size:20px}.stats-tile span{font-size:12px;color:#dfb7aa}
 .leader-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
 .leader-list p{padding:11px 14px;border:1px solid #6d3540;border-radius:12px;margin:0;background:#2a141f}
@@ -112,7 +102,6 @@ class FootballNewsPanel extends HTMLElement {
     this.modal = null;
     this.data = DEFAULT_DATA;
     this.lang = 'vi';
-    this.competitions = null;
     this.leaderCache = {};
     this.monthData = null;
     this.monthValue = new Date().toISOString().slice(0,7);
@@ -120,6 +109,7 @@ class FootballNewsPanel extends HTMLElement {
     this._loading = false;
     this._lastAttempt = 0;
     this._last = 0;
+    this.error = "";
     this._hass = null;
     this.shadowRoot.addEventListener('click', event => this._click(event));
   }
@@ -175,17 +165,14 @@ class FootballNewsPanel extends HTMLElement {
       this.lang = FN_WORDS[data.language] ? data.language : 'vi';
       if (this.selectedLeague !== 'all' && !this.leagues().some(l => l.league_code === this.selectedLeague)) this.selectedLeague = 'all';
       this._last = Date.now();
+      this.error = '';
       this.render();
-    } catch (error) {console.warn('Football News dashboard request failed',error?.message);}
+    } catch (error) {
+      this.error = String(error?.message || 'WebSocket không phản hồi').slice(0, 240);
+      console.warn('Football News dashboard request failed', this.error);
+      this.render();
+    }
     finally {this._loading = false;}
-  }
-  async loadCompetitions() {
-    if (!this.data.admin) return;
-    try {
-      const response = await this._hass.callWS({type:'football_news/competitions'});
-      this.competitions = response.competitions || [];
-    } catch (error) {this.competitions = []; console.warn('Football News predictions unavailable',error?.message);}
-    this.render();
   }
   async loadLeaders() {
     if (this.selectedLeague === 'all' || this.leaderCache[this.selectedLeague]) return;
@@ -207,7 +194,6 @@ class FootballNewsPanel extends HTMLElement {
     const data = element.dataset;
     if (data.tab) {
       this.tab = data.tab; this.modal = null; this.render();
-      if (this.tab === 'competitions' && this.competitions === null) await this.loadCompetitions();
       if (this.tab === 'leaders') await this.loadLeaders();
       return;
     }
@@ -305,17 +291,6 @@ class FootballNewsPanel extends HTMLElement {
     if(!feed.leaders?.length)return `<div class="empty">${this.t('dataUnavailable')}</div>`;
     return `<div class="leader-list">${feed.leaders.map(item=>`<p><small class="muted">${esc(item.category)}</small><br><strong>${esc(item.player)}</strong><br><span class="minor">${esc(item.team)}</span><b style="float:right;color:#ffcf53">${esc(item.value)}</b></p>`).join('')}</div>`;
   }
-  predictionBoard() {
-    if(!this.data.admin)return `<div class="notice">${this.t('adminOnly')}</div>`;
-    if(this.competitions===null)return `<div class="empty">${this.t('waiting')}</div>`;
-    if(!this.competitions.length)return `<div class="notice">${this.t('noCompetition')}</div>`;
-    return this.competitions.map(comp=>{
-      const rows=comp.standings || [];
-      return this.card(`${comp.kind==='lms'?'🏆 LMS':'🎯 Acca'} · ${comp.title}`,
-        `<div class="stats-grid"><div class="stats-tile"><span>${this.t('league')}</span><b>${esc(comp.league)}</b></div><div class="stats-tile"><span>${this.t('rounds')}</span><b>${Object.keys(comp.rounds||{}).length}</b></div><div class="stats-tile"><span>${this.t('players')}</span><b>${rows.length}</b></div><div class="stats-tile"><span>${this.t('fund')}</span><b>${esc(comp.prize_fund??0)}</b></div></div>
-        <div class="tablewrap"><table><thead><tr><th>${this.t('players')}</th><th>${this.t('score')}</th><th>${this.t('active')}</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(comp.kind==='lms'?r.survived_rounds:r.points)}</td><td>${r.active?'✓':'–'}</td></tr>`).join('')}</tbody></table></div>`);
-    }).join('');
-  }
   modalMarkup() {
     if(!this.modal)return '';
     const m=this.modal;
@@ -334,6 +309,14 @@ class FootballNewsPanel extends HTMLElement {
     return `<div class="modal-mask" data-close><div class="modal-body" role="dialog" aria-modal="true"><div class="modal-head"><h3>⚽ ${this.t('details')}</h3><button class="modal-close" data-close>${this.t('close')} ×</button></div>${contents}</div></div>`;
   }
   render() {
+    try {
+      this.renderContent();
+    } catch (error) {
+      console.error('Football News UI rendering error', error);
+      this.shadowRoot.innerHTML = `<style>:host{display:block;min-height:80vh;background:#170b10;color:#fff3e9;font:16px system-ui;padding:32px;box-sizing:border-box}a{color:#ffd24c}</style><h1>⚽ Football News</h1><p>Không thể hiển thị dữ liệu. Vui lòng làm mới trang và kiểm tra log trình duyệt (F12).</p><p>Unable to display this panel; inspect the browser console.</p>`;
+    }
+  }
+  renderContent() {
     const d=this.data;
     const combined=this.merged();
     const fixtures=combined.fixtures;
@@ -355,15 +338,17 @@ class FootballNewsPanel extends HTMLElement {
       case 'table': body=this.card('🏆 '+this.t('table'),this.standings(combined.standings));break;
       case 'leaders': body=this.card('🥇 '+this.t('leaders'),this.leaders());break;
       case 'clubs': body=this.card('⭐ '+this.t('clubs'),this.clubs(fixtures,combined.standings));break;
-      case 'competitions': body=this.predictionBoard()+this.card('⚙️ '+this.t('settings'),`<div class="notice">${this.t('instructions')}</div>`);break;
       case 'news': body=this.card('📰 '+this.t('news'),this.news(news));break;
       default: body=this.card('⚙️ '+this.t('settings'),`<div class="notice">${this.t('configure')} <b>${this.t('integrations')} → Football News → Configure</b>.<p>${this.t('alertHint')}</p><p>${this.t('note')}</p></div>`);
     }
-    const tabs=[['overview','⌂'],['live','⚡'],['fixtures','🗓'],['results','🏁'],['table','🏆'],['leaders','🥇'],['clubs','⭐'],['competitions','🎯'],['news','📰'],['settings','⚙️']];
+    const tabs=[['overview','⌂'],['live','⚡'],['fixtures','🗓'],['results','🏁'],['table','🏆'],['leaders','🥇'],['clubs','⭐'],['news','📰'],['settings','⚙️']];
     const leagues=this.leagues();
     const leagueChips=`<div class="league-bar" aria-label="${this.t('league')}"><button class="league-chip ${this.selectedLeague==='all'?'selected':''}" data-league="all">🌐 ${this.t('allLeagues')}</button>${leagues.map(l=>`<button class="league-chip ${this.selectedLeague===l.league_code?'selected':''}" data-league="${esc(l.league_code)}">${esc(l.name)}</button>`).join('')}</div>`;
     const errors=leagues.flatMap(l=>l.errors||[]);
-    this.shadowRoot.innerHTML=`<style>${STYLE}${MORE_STYLE}</style><div class="app"><div class="shell"><aside class="aside"><div class="brand"><img alt="${this.t('logo')}" src="/football_news/icon.png"><span>Football <b>News</b></span></div><nav class="nav">${tabs.map(([key,icon])=>`<button class="${this.tab===key?'active':''}" data-tab="${key}"><span class="emoji">${icon}</span>${this.t(key)}</button>`).join('')}</nav><div class="source-note">${this.t('note')}</div></aside><main class="main"><header class="top"><div><span class="eyebrow">FOOTBALL NEWS / HOME ASSISTANT</span><h1>${this.t('dashboard')}</h1><p class="muted">${this.t('sources')}</p></div><div class="actions"><button class="refresh" data-refresh>↻ ${this.t('refresh')}</button></div></header>${leagueChips}<section class="hero"><div><span class="league-pill"><span class="dot"></span>${esc(this.selectedLeague==='all'?this.t('allLeagues'):(leagues.find(l=>l.league_code===this.selectedLeague)?.name||this.selectedLeague))}</span><h2>⚽ ${this.t('matches')} · ${this.t('data')}</h2><div class="muted">${leagues.length} ${this.t('league')} · ${this.t('browser')}</div></div><img class="hero-icon" src="/football_news/icon.png" alt=""></section><div class="metrics"><div class="metric"><span class="deco">⚡</span><span class="num">${live.length}</span><span class="key">${this.t('live')}</span></div><div class="metric"><span class="deco">🗓</span><span class="num">${future.length}</span><span class="key">${this.t('fixtures')}</span></div><div class="metric"><span class="deco">📰</span><span class="num">${news.length}</span><span class="key">${this.t('news')}</span></div></div>${!this._last?`<div class="warn">${this.t('waiting')}</div>`:''}${errors.length?`<div class="warn">${this.t('error')}. ${this.t('stale')}</div>`:''}${body}<div class="feedinfo"><span class="dot"></span>${this.t('source')}: ESPN · ${this.t('updated')}: ${esc((leagues[0]?.updated_at?.fixtures)?this.date(leagues[0].updated_at.fixtures):'–')}</div><div class="footer">${this.t('note')}</div></main></div>${this.modalMarkup()}</div>`;
+    const connectionNotice=this.error ? `<div class="warn" role="alert"><strong>${this.t('error')}:</strong> ${esc(this.error)}. ${this.t('connectionHelp')}</div>` : '';
+    const sourceNotice=errors.length ? `<div class="warn" role="status"><strong>${this.t('error')}:</strong> ${errors.slice(0,3).map(e=>esc(e)).join(' · ')}. ${this.t('stale')}</div>` : '';
+    const setupNotice=leagues.length===0 ? `<div class="notice">${this.t('setupHelp')}</div>` : '';
+    this.shadowRoot.innerHTML=`<style>${STYLE}${MORE_STYLE}</style><div class="app"><div class="shell"><aside class="aside"><div class="brand"><img alt="${this.t('logo')}" src="/football_news/icon.png"><span>Football <b>News</b></span></div><nav class="nav">${tabs.map(([key,icon])=>`<button class="${this.tab===key?'active':''}" data-tab="${key}"><span class="emoji">${icon}</span>${this.t(key)}</button>`).join('')}</nav><div class="source-note">${this.t('note')}</div></aside><main class="main"><header class="top"><div><span class="eyebrow">FOOTBALL NEWS / HOME ASSISTANT</span><h1>${this.t('dashboard')}</h1><p class="muted">${this.t('sources')}</p></div><div class="actions"><button class="refresh" data-refresh>↻ ${this.t('refresh')}</button></div></header>${leagueChips}<section class="hero"><div><span class="league-pill"><span class="dot"></span>${esc(this.selectedLeague==='all'?this.t('allLeagues'):(leagues.find(l=>l.league_code===this.selectedLeague)?.name||this.selectedLeague))}</span><h2>⚽ ${this.t('matches')} · ${this.t('data')}</h2><div class="muted">${leagues.length} ${this.t('league')} · ${this.t('browser')}</div></div><img class="hero-icon" src="/football_news/icon.png" alt=""></section><div class="metrics"><div class="metric"><span class="deco">⚡</span><span class="num">${live.length}</span><span class="key">${this.t('live')}</span></div><div class="metric"><span class="deco">🗓</span><span class="num">${future.length}</span><span class="key">${this.t('fixtures')}</span></div><div class="metric"><span class="deco">📰</span><span class="num">${news.length}</span><span class="key">${this.t('news')}</span></div></div>${setupNotice}${connectionNotice}${!this._last && !this.error?`<div class="warn">${this.t('waiting')}</div>`:''}${sourceNotice}${body}<div class="feedinfo"><span class="dot"></span>${this.t('source')}: ESPN · ${this.t('updated')}: ${esc((leagues[0]?.updated_at?.fixtures)?this.date(leagues[0].updated_at.fixtures):'–')}</div><div class="footer">${this.t('note')}</div></main></div>${this.modalMarkup()}</div>`;
   }
 }
 if(!customElements.get('football-news-panel')) customElements.define('football-news-panel',FootballNewsPanel);

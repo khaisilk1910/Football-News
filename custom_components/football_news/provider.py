@@ -64,15 +64,39 @@ class FootballProvider:
             return result
 
     async def fixtures(self) -> list[dict]:
+        """Fetch a short rolling window, falling back to ESPN default scoreboard.
+
+        Some competition codes do not support arbitrary date ranges. A fallback
+        is intentionally limited to one extra request and avoids HTTP 429/403.
+        """
         now = datetime.now(timezone.utc)
         start = (now - timedelta(days=2)).strftime("%Y%m%d")
         end = (now + timedelta(days=8)).strftime("%Y%m%d")
+        endpoint = f"site/v2/sports/soccer/{self.league}/scoreboard"
+
         async def fetch():
-            data = await self._json(f"site/v2/sports/soccer/{self.league}/scoreboard", {"dates": f"{start}-{end}", "limit": 300})
-            events = data.get("events")
-            if not isinstance(events, list):
-                raise ProviderError("Scoreboard response has no events array")
-            return [result for event in events if isinstance(event, dict) if (result := normalize_fixture(event, self.league)) is not None]
+            try:
+                data = await self._json(endpoint, {"dates": f"{start}-{end}", "limit": 300})
+                if not isinstance(data.get("events"), list):
+                    raise ProviderError("Scoreboard: events array missing from date-range response")
+            except ProviderError as first_error:
+                if "HTTP 403" in str(first_error) or "HTTP 429" in str(first_error):
+                    raise
+                _LOGGER.warning(
+                    "Football News %s scoreboard date-range request failed (%s); "
+                    "retrying once with provider default", self.league, first_error,
+                )
+                try:
+                    data = await self._json(endpoint, {"limit": 300})
+                except ProviderError as fallback_error:
+                    raise ProviderError(
+                        f"Scoreboard primary failed ({first_error}); "
+                        f"fallback failed ({fallback_error})"
+                    ) from fallback_error
+                if not isinstance(data.get("events"), list):
+                    raise ProviderError("Scoreboard fallback response has no events array")
+            return [result for event in data["events"] if isinstance(event, dict)
+                    if (result := normalize_fixture(event, self.league)) is not None]
         return await self.cached(f"fixtures:{start}:{end}", 60, fetch)
 
     async def standings(self) -> list[dict]:

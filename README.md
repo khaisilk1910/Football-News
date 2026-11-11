@@ -54,7 +54,6 @@ Football News tập trung vào ba trải nghiệm: **xem bóng đá nhanh**, **n
 | 📊 Bảng xếp hạng | Vị trí, số trận, thắng/hòa/thua, hiệu số, điểm số; trang thống kê cầu thủ theo nguồn |
 | 📰 Tin tức | Tiêu đề, tóm tắt, thời điểm xuất bản và liên kết đến nguồn bài báo |
 | ⭐ Câu lạc bộ yêu thích | Theo dõi tối đa 5 đội, ưu tiên lịch và vị trí bảng; xem đội hình theo yêu cầu |
-| 🏆 Giải dự đoán | Lõi quản lý Last Man Standing và Acca League; lưu người chơi, vòng, lựa chọn, thanh toán, chấm điểm tự động |
 | 🔔 Thông báo Zalo | Nhắc trước giờ bóng lăn, bắt đầu trận, thay đổi tỷ số/bàn thắng, kết quả và tin mới; có công tắc bật/tắt từng loại |
 | 🧩 Home Assistant | Cấu hình bằng giao diện, tạo cảm biến, thực thi action, tải chẩn đoán và theo dõi log |
 | ⚡ Hiệu năng | Không gọi API bóng đá hoặc Zalo trong quá trình thiết lập/khởi động; dữ liệu được cập nhật sau khi HA hoạt động |
@@ -81,7 +80,7 @@ Xem **[đối chiếu tính năng và giới hạn hiện tại](FEATURES.md)** 
 - **Tiếng Việt** cho giao diện, các bước cấu hình, entity và action; có thêm bản dịch tiếng Anh.
 - Thiết kế **đỏ đô – đỏ tươi – vàng kim** với biểu tượng kết hợp **quả bóng, Home Assistant và News**.
 - Dashboard sử dụng giao diện linh hoạt trên điện thoại, máy tính bảng và máy tính.
-- Có **Trung tâm nhiều giải**, **Câu lạc bộ của tôi**, **Lịch theo tháng**, **Cầu thủ nổi bật** và **Giải dự đoán**. Các dữ liệu bổ sung được truy vấn khi mở mục tương ứng, không tải khi khởi động.
+- Có **Trung tâm nhiều giải**, **Câu lạc bộ của tôi**, **Lịch theo tháng**, **Cầu thủ nổi bật**. Các dữ liệu bổ sung được truy vấn khi mở mục tương ứng, không tải khi khởi động.
 - Các biểu tượng ngôi sao cho phép theo dõi đội và ưu tiên trận; thay đổi yêu cầu quyền quản trị Home Assistant.
 - Ngày giờ hiển thị theo múi giờ Home Assistant. Tên câu lạc bộ, giải đấu và tiêu đề báo giữ nguyên từ nguồn để tránh dịch sai tên riêng.
 
@@ -200,8 +199,6 @@ Ghi chú: nội dung README mô tả tính năng **đã triển khai**; những 
 | `football_news.refresh` | Yêu cầu làm mới dữ liệu |
 | `football_news.test_zalo` | Gửi thử một tin thông báo Zalo |
 | `football_news.match_details` | Lấy dữ liệu chi tiết của một trận từ ID ESPN (có phản hồi trả về) |
-| `football_news.manage_competition` | Tạo giải/vòng, thêm người chơi, gửi dự đoán, cập nhật thanh toán và buyback LMS (trả về kết quả) |
-| `football_news.get_competitions` | Đọc kết quả và bảng xếp hạng giải dự đoán (trả về kết quả) |
 
 Ví dụ gọi chi tiết trận bằng YAML:
 
@@ -214,64 +211,23 @@ response_variable: chi_tiet_tran
 
 Mỗi giải tạo thiết bị Football News với các cảm biến tóm tắt như số trận trực tiếp, số trận sắp tới, số tin, **số CLB yêu thích**, trận tiếp theo, lần cập nhật và khả năng kết nối nguồn. Tên/ID thực tế được Home Assistant tạo theo cấu hình của bạn.
 
-## 🏆 Quản lý giải dự đoán LMS / Acca
-
-Dùng dashboard **Giải dự đoán** để xem bảng điểm và **Công cụ nhà phát triển → Actions** để tạo/quản lý. Các action quản trị chỉ dành cho quản trị viên Home Assistant; automation hệ thống có thể được cấu hình bởi quản trị viên.
-
-**Ví dụ tạo giải LMS:**
-
-```yaml
-action: football_news.manage_competition
-data:
-  operation: create
-  kind: lms
-  title: "LMS cuối tuần"
-  league: eng.1
-response_variable: giai_moi
-```
-
-Kết quả trả về `competition_id`. Dùng giá trị này khi thêm người chơi hoặc tạo vòng:
-
-```yaml
-action: football_news.manage_competition
-data:
-  operation: add_player
-  competition_id: "MA_GIAI"
-  player_name: "Người chơi A"
-response_variable: nguoi_choi
-```
-
-```yaml
-action: football_news.manage_competition
-data:
-  operation: round
-  competition_id: "MA_GIAI"
-  round_id: "vong_1"
-  deadline: "2026-11-20T19:00:00+07:00"
-  fixture_ids: ["401234567", "401234568"]
-response_variable: tao_vong
-```
-
-Chọn đội thắng một trận ở LMS:
-
-```yaml
-action: football_news.manage_competition
-data:
-  operation: pick
-  competition_id: "MA_GIAI"
-  round_id: "vong_1"
-  player_id: "MA_NGUOI_CHOI"
-  picks:
-    - fixture_id: "401234567"
-      team_id: "359"
-response_variable: xac_nhan
-```
-
-Với **Acca**, tạo giải bằng `kind: acca`, một dự đoán gồm đúng hai trận và mỗi trận chọn `outcome: H` (chủ nhà), `D` (hòa), `A` (đội khách). Chấm **3 điểm nếu đúng cả hai, 1 điểm nếu đúng một, 0 điểm nếu sai cả hai**. Hệ thống tự chấm khi đã nhận kết quả hợp lệ sau deadline.
-
-**Giới hạn hiện tại:** Bộ máy tính điểm hoạt động, nhưng **chưa có liên kết người chơi công khai hoặc giao diện tự nhập dự đoán đầy đủ**. Không dùng chung cơ sở dữ liệu Football Hub khi chưa có quy trình chuyển đổi được kiểm chứng. Xem [FEATURES.md](FEATURES.md) để xem phạm vi đã triển khai.
-
 ## 🩺 Khi có lỗi hoặc dữ liệu không cập nhật
+
+### Trang Football News trong sidebar trắng
+
+1. Xác nhận phiên bản của tích hợp là **2026.11.11.4** tại **Cài đặt → Thiết bị & dịch vụ → Football News**.
+2. Mở trực tiếp `http://ĐỊA_CHỈ_HA:8123/football_news/panel.js` trong trình duyệt. Phải hiển thị mã JavaScript, không phải lỗi 404 hoặc trang đăng nhập. Dùng cùng host/port mà bạn đang mở Home Assistant.
+3. **Khởi động lại Home Assistant** sau khi thay mã Python, rồi tải lại trang bằng **Ctrl+F5** để xóa cache trình duyệt.
+4. Nếu vẫn trắng, nhấn **F12 → Console** và kiểm tra các lỗi có chữ `football-news-panel` hoặc `panel.js`. Bản cập nhật sẽ hiển thị thông báo khi dữ liệu WebSocket bị lỗi.
+
+### Cảm biến lịch hoặc trạng thái nguồn hiển thị `Unavailable`
+
+- Có thể dữ liệu tin tức vẫn hoạt động nhưng truy vấn **scoreboard ESPN** của giải đang bị lỗi; đây là **hai nguồn dữ liệu thành phần khác nhau**.
+- Bản mới thử truy vấn lịch có khoảng ngày; nếu không được, thử lại **một lần** bằng truy vấn mặc định, tránh yêu cầu mạng liên tục.
+- Vào **Cài đặt → Hệ thống → Nhật ký** và tìm `custom_components.football_news` hoặc bật chế độ debug bên dưới. Dashboard cũng hiển thị lỗi lấy dữ liệu ngay trên giao diện.
+- Nếu ESPN không trả kết quả cho mã giải đấu, cảm biến không được tự biến thành `0` hay một tỷ số tưởng tượng. Hãy thử giải khác, chẳng hạn Premier League, để xác định có phải giới hạn nguồn.
+
+### Các bước kiểm tra khác
 
 1. Mở dashboard và kiểm tra mốc **cập nhật gần nhất** cùng trạng thái nguồn.
 2. Thử action `football_news.refresh` để yêu cầu làm mới.
@@ -292,16 +248,16 @@ Không đăng mật khẩu, token hoặc Zalo ID thật vào issue công khai. C
 
 ## 📦 Cập nhật và phát hành
 
-Phiên bản mã nguồn hiện tại: **2026.11.11.3**. Cập nhật qua **Cài đặt → Marketplace** hoặc trang **Updates** khi bản phát hành mới xuất hiện. Với bản cài thủ công, thay thư mục `custom_components/football_news` rồi khởi động lại Home Assistant.
+Phiên bản mã nguồn hiện tại: **2026.11.11.4**. Cập nhật qua **Cài đặt → Marketplace** hoặc trang **Updates** khi bản phát hành mới xuất hiện. Với bản cài thủ công, thay thư mục `custom_components/football_news` rồi khởi động lại Home Assistant.
 
 Dành cho người duy trì repository:
 
 - Đưa **toàn bộ nội dung repository**, bao gồm `.github` và `.gitignore`, lên `https://github.com/khaisilk1910/Football-News`, không chỉ file ZIP cài đặt.
 - Chạy [quy trình kiểm tra mã nguồn](https://github.com/khaisilk1910/Football-News/actions/workflows/validate.yml) và xử lý lỗi nếu có.
-- Tạo Git tag **`v2026.11.11.3`** trùng phiên bản trong `manifest.json` và `const.py`. Quy trình `.github/workflows/release.yml` tự xây dựng ZIP, kiểm tra và tạo GitHub Release kèm **`football_news.zip`** cho ai cần cài thủ công.
+- Tạo Git tag **`v2026.11.11.4`** trùng phiên bản trong `manifest.json` và `const.py`. Quy trình `.github/workflows/release.yml` tự xây dựng ZIP, kiểm tra và tạo GitHub Release kèm **`football_news.zip`** cho ai cần cài thủ công.
 - Marketplace cài trực tiếp thư mục `custom_components/football_news` từ mã nguồn GitHub, nên **không bắt buộc tải asset ZIP**. Vẫn nên tạo GitHub Release mới để cập nhật rõ ràng. Không dùng tag cũ `v2026.11.11.1` cho mã mới.
 
-**Nếu gặp lỗi 404 khi cài:** đây là tình trạng bản cũ bật `zip_release: true` nhưng Release GitHub thiếu `football_news.zip`. Hãy đưa **trọn bộ repository mới** (cả thư mục ẩn `.github` và file `.gitignore`) lên nhánh `main`, tạo Release `v2026.11.11.3` từ commit mới, sau đó tải lại thông tin repository trong Marketplace và cài đặt. Xem [hướng dẫn xuất bản và sửa lỗi](RELEASE.md).
+**Nếu gặp lỗi 404 khi cài:** đây là tình trạng bản cũ bật `zip_release: true` nhưng Release GitHub thiếu `football_news.zip`. Hãy đưa **trọn bộ repository mới** (cả thư mục ẩn `.github` và file `.gitignore`) lên nhánh `main`, tạo Release `v2026.11.11.4` từ commit mới, sau đó tải lại thông tin repository trong Marketplace và cài đặt. Xem [hướng dẫn xuất bản và sửa lỗi](RELEASE.md).
 
 File **`.gitignore`** nằm ở **thư mục gốc** của repository, cùng cấp `README.md`, `LICENSE` và `hacs.json`. File có dấu chấm đầu tên nên có thể bị ẩn trong trình quản lý tập tin. Gói **repository ZIP** chứa file này; gói cài **`football_news.zip`** không cần chứa nó.
 

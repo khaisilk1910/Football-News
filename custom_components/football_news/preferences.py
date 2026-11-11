@@ -8,7 +8,7 @@ from .const import DOMAIN
 
 
 class FootballPreferences:
-    """Store club favourites and pinned competitions, never access network."""
+    """Store club favourites and pinned leagues, never access network."""
 
     def __init__(self, hass):
         self._hass = hass

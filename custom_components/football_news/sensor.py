@@ -54,9 +54,11 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
         if self.entity_description.key == "favorite_clubs":
             return self.hass.data[DOMAIN]["preferences"]._loaded
         data = self.coordinator.data or {}
-        needed = "news" if self.entity_description.key == "news_articles" else "fixtures"
-        return (self.coordinator.last_update_success
-                and needed in data.get("updated_at", {})
+        needed = ("news" if self.entity_description.key == "news_articles"
+                  else "any" if self.entity_description.key == "last_update" else "fixtures")
+        if needed == "any":
+            return bool(data.get("updated_at"))
+        return (bool(data.get("updated_at", {}).get(needed))
                 and not any(str(e).startswith(f"{needed}:") for e in data.get("errors", [])))
 
     @property
@@ -84,8 +86,8 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
                     continue
             return min(future) if future else None
         if self.entity_description.key == "last_update":
-            timestamp = data.get("updated_at", {}).get("fixtures")
-            return datetime.fromisoformat(timestamp) if timestamp else None
+            timestamps = list(data.get("updated_at", {}).values())
+            return max(datetime.fromisoformat(value) for value in timestamps) if timestamps else None
         return None
 
     @property

@@ -7,14 +7,15 @@
   "config_flow": true,
   "dependencies": [
     "frontend",
-    "http"
+    "http",
+    "panel_custom"
   ],
   "documentation": "https://github.com/khaisilk1910/Football-News",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/khaisilk1910/Football-News/issues",
   "requirements": [],
-  "version": "2026.11.11.3",
+  "version": "2026.11.11.4",
   "categories": [
     "news_social_media",
     "messaging_notifications"

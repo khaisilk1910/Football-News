@@ -28,7 +28,26 @@ class FootballNewsConnected(CoordinatorEntity, BinarySensorEntity):
         )
 
     @property
+    def available(self):
+        # This entity is a diagnostic of ESPN, not a transport to ESPN.
+        # It must remain visible when the provider is down.
+        return True
+
+    @property
     def is_on(self):
+        if not self.coordinator._attempted_refresh:
+            return None  # Unknown until the first background request finishes.
         data = self.coordinator.data or {}
-        return (self.coordinator.last_update_success and "fixtures" in data.get("updated_at", {})
-                and not any(str(e).startswith("fixtures:") for e in data.get("errors", [])))
+        return bool(data.get("updated_at", {}).get("fixtures")) and not any(
+            str(err).startswith("fixtures:") for err in self.coordinator._last_errors
+        )
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data or {}
+        return {
+            "source": "ESPN",
+            "league": self.coordinator.provider.league,
+            "updated_at": data.get("updated_at", {}),
+            "errors": self.coordinator._last_errors[:3],
+        }

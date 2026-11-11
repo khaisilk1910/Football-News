@@ -18,7 +18,7 @@ with ZipFile(OUT) as archive:
                      'Football-News/FEATURES.md','Football-News/hacs.json',
                      'Football-News/.github/workflows/release.yml',
                      'Football-News/custom_components/football_news/manifest.json',
-                     'Football-News/custom_components/football_news/predictions.py'):
+                     'Football-News/custom_components/football_news/frontend/panel.js'):
         assert required in names, f'Missing {required}'
     assert archive.testzip() is None
     assert not any('__pycache__' in name or name.endswith('.pyc') for name in names)
