@@ -1,0 +1,50 @@
+{
+  "title": "Football News",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Thiết lập Football News",
+        "description": "Chọn giải bóng đá cần theo dõi. Không yêu cầu API key. Dữ liệu được tải sau khi Home Assistant khởi động xong.",
+        "data": {"league": "Giải đấu"}
+      }
+    },
+    "abort": {"already_configured": "Giải đấu này đã được thiết lập."}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cài đặt Football News & Zalo",
+        "description": "Football News sử dụng action `zalo_bot.send_message` của Zalo Bot đã cài đặt. Hãy bật Markdown trong Zalo Bot để hiển thị tin nhắn có màu. Giữ ID người nhận/nhóm ở dạng chuỗi. Để trống bộ lọc đội nếu muốn nhận thông báo cho mọi trận của giải.",
+        "data": {
+          "locale": "Ngôn ngữ dashboard",
+          "team_filter": "Lọc tên đội bóng (tùy chọn)",
+          "zalo_enabled": "Bật thông báo Zalo",
+          "zalo_account": "Tài khoản gửi của Zalo Bot (account_selection)",
+          "zalo_thread_id": "ID người nhận hoặc nhóm (thread_id)",
+          "zalo_thread_type": "Loại cuộc trò chuyện",
+          "schedule_alerts": "Nhắc lịch thi đấu",
+          "kickoff_alerts": "Thông báo bắt đầu trận",
+          "result_alerts": "Thông báo kết quả chung cuộc",
+          "news_alerts": "Thông báo tin tức mới",
+          "reminder_minutes": "Nhắc trước trận (phút)"
+        }
+      }
+    },
+    "error": {"zalo_missing_fields": "Cần nhập tài khoản gửi và ID người nhận trước khi bật Zalo."}
+  },
+  "entity": {
+    "sensor": {
+      "live_matches": {"name": "Số trận trực tiếp"},
+      "upcoming_matches": {"name": "Số trận sắp diễn ra"},
+      "news_articles": {"name": "Số tin tức"},
+      "next_kickoff": {"name": "Lịch trận tiếp theo"},
+      "last_update": {"name": "Lần cập nhật dữ liệu"}
+    },
+    "binary_sensor": {"source_connected": {"name": "Nguồn dữ liệu sẵn sàng"}}
+  },
+  "services": {
+    "refresh": {"name": "Làm mới dữ liệu", "description": "Yêu cầu cập nhật lịch thi đấu, tin tức và bảng xếp hạng.", "fields": {"entry_id": {"name": "ID cấu hình", "description": "Không bắt buộc; mặc định dùng giải đầu tiên."}}},
+    "test_zalo": {"name": "Gửi tin thử Zalo", "description": "Thử gửi tin được định dạng bằng Zalo Bot đã cài đặt.", "fields": {"entry_id": {"name": "ID cấu hình", "description": "Không bắt buộc; mặc định dùng giải đầu tiên."}}},
+    "match_details": {"name": "Xem chi tiết trận", "description": "Tải thông tin trận bóng theo ID ESPN; trả kết quả cho automation.", "fields": {"entry_id": {"name": "ID cấu hình", "description": "Không bắt buộc; mặc định dùng giải đầu tiên."}, "event_id": {"name": "Mã trận đấu ESPN", "description": "ID dạng số lấy từ lịch thi đấu Football News."}}}
+  }
+}

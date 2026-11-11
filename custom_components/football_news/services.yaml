@@ -1,0 +1,27 @@
+refresh:
+  name: Làm mới dữ liệu
+  description: Yêu cầu cập nhật lịch thi đấu, tin tức và bảng xếp hạng.
+  fields:
+    entry_id:
+      name: ID cấu hình
+      description: Không bắt buộc; mặc định dùng giải đầu tiên.
+test_zalo:
+  name: Gửi tin thử Zalo
+  description: Gửi tin mẫu qua tích hợp Zalo Bot đang hoạt động.
+  fields:
+    entry_id:
+      name: ID cấu hình
+      description: Không bắt buộc; mặc định dùng giải đầu tiên.
+match_details:
+  name: Lấy chi tiết trận đấu
+  description: Trả dữ liệu chi tiết của trận bóng từ ESPN cho automation.
+  fields:
+    entry_id:
+      name: ID cấu hình
+      description: Không bắt buộc; mặc định dùng giải đầu tiên.
+    event_id:
+      name: ID trận đấu ESPN
+      description: ID trận lấy từ Football News; chỉ cho phép chữ số.
+      required: true
+      selector:
+        text:

@@ -1,249 +1,264 @@
-# ⚽ Home Assistant Football Hub
+# ⚽ Football News — Home Assistant
 
-[![License](https://img.shields.io/badge/license-Personal%20Use-red.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.8.19-brightgreen)
-![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue)
-![Marketplace](https://img.shields.io/badge/Marketplace-Custom%20repository-orange)
-![Cloud Polling](https://img.shields.io/badge/IoT--Class-Cloud%20Polling-blue)
+[![Validate](https://github.com/khaisilk1910/Football-News/actions/workflows/validate.yml/badge.svg)](https://github.com/khaisilk1910/Football-News/actions/workflows/validate.yml)
+[![Release](https://img.shields.io/github/v/release/khaisilk1910/Football-News?display_name=tag)](https://github.com/khaisilk1910/Football-News/releases)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.11%2B-18bcf2)](https://www.home-assistant.io/)
+[![Language](https://img.shields.io/badge/ng%C3%B4n%20ng%E1%BB%AF-Ti%E1%BA%BFng%20Vi%E1%BB%87t-20c5bb)](#ng%C3%B4n-ng%E1%BB%AF)
 
-Football Hub is a football dashboard and private competition manager for Home Assistant. Follow live scores, fixtures, results, tables, teams, cups, players, news, TV listings and transfers in one football-themed interface.
+**Football News** là tích hợp Home Assistant được xây dựng độc lập, cung cấp dashboard bóng đá hiện đại bằng tiếng Việt, lịch thi đấu, tỷ số trực tiếp, kết quả, bảng xếp hạng, tin tức và gửi thông báo qua tích hợp **Zalo Bot**.
 
-It also includes Last Man Standing (LMS) and Acca League tools, with private player links, automatic fixture checking, payments, reminders and shared public pages.
+> **Lưu ý về nguồn dự án:** Đây là sản phẩm viết mới, **không phải bản fork hoặc bản rebrand** của `Adya84/ha-football-hub`. Dự án đó sử dụng giấy phép riêng **cấm phân phối lại/đổi thương hiệu** khi chưa có chấp thuận bằng văn bản. Football News không chứa mã hoặc hình ảnh của dự án đó. Vì vậy, nó không bao gồm các công cụ Last Man Standing, Acca League, TV guide, transfers, nhiều trang chuyên sâu hoặc toàn bộ tính năng Football Hub.
 
----
+> **Tình trạng bản này:** Có mã nguồn, bài kiểm thử đơn vị, cấu hình Marketplace và quy trình release. Chưa chạy thử trên một Home Assistant thật hoặc xác thực trực tiếp dữ liệu ESPN/Zalo tại môi trường của người dùng. Hãy thử trên môi trường test trước khi triển khai rộng rãi.
 
-## Contents
+## Cài nhanh trên Marketplace / HACS
 
-- [Install Football Hub](#install-football-hub)
-- [First-time setup](#first-time-setup)
-- [Updating Football Hub](#updating-football-hub)
-- [What Football Hub includes](#what-football-hub-includes)
-- [Data refresh and troubleshooting](#data-refresh-and-troubleshooting)
+[![Mở Football News trong Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=khaisilk1910&repository=Football-News&category=integration)
 
----
+**Nút trên** mở đường dẫn nhanh tới repository trong Home Assistant (trên Home Assistant 2026.11+ đường dẫn HACS cũ được chuyển sang Marketplace). Bạn phải **đẩy mã nguồn lên GitHub và xuất bản GitHub Release thành công trước** vì `hacs.json` bật `zip_release`.
 
-## Latest release — 0.8.19
+1. Mở **Settings → Marketplace → Add from link** trong Home Assistant 2026.11+.
+2. Dán `https://github.com/khaisilk1910/Football-News` và bấm **Add**; kết nối GitHub nếu được yêu cầu.
+3. Nếu được hỏi loại repository, chọn **Integration**.
+4. Chọn **Football News → Install** và khởi động lại Home Assistant.
+5. Vào **Settings → Devices & services → Add integration → Football News**, chọn giải đấu.
+6. Mở **Football News** trong thanh bên.
 
-### Favourite clubs across leagues
+**HACS cũ (Home Assistant ≤2026.10):** HACS → ba chấm → Custom repositories → thêm URL ở trên, chọn `Integration`, cài và restart. Mặc dù có thể nhận ZIP, mã nguồn này mới được thiết kế theo API của Home Assistant 2026.11+; chạy trên 2026.10 trở xuống **không được hỗ trợ**.
 
-Choose a **home league** when adding a favourite club, or change it from the saved club list. The club's device and sensors then use that league, even when you first find the club while another competition is active.
+### Cài thủ công
 
-Standings for favourite clubs in other leagues now refresh in the background and restore from a saved snapshot after Home Assistant restarts.
+1. Tải mã nguồn từ GitHub Release hoặc ZIP repository.
+2. Chép **duy nhất** thư mục `custom_components/football_news` vào `/config/custom_components/football_news`.
+3. Kiểm tra đường dẫn `/config/custom_components/football_news/manifest.json` tồn tại, không bị lồng hai lớp thư mục.
+4. Khởi động lại Home Assistant, sau đó thêm tích hợp **Football News** qua giao diện.
+5. Cài và cấu hình Zalo Bot riêng nếu muốn gửi Zalo.
 
----
+## Tính năng
 
-## Install Football Hub
+| Nhóm | Chức năng |
+|---|---|
+| Dashboard | Thiết kế đỏ đô và vàng kim, icon bóng đá + Home Assistant + News, tương thích thiết bị di động |
+| Bản địa hóa | Tiếng Việt & tiếng Anh cho dashboard, setup flow, options flow, entity, action |
+| Lịch thi đấu | Trận từ 2 ngày trước đến 8 ngày tới; ngày giờ theo múi giờ cấu hình Home Assistant |
+| Trực tiếp | Trạng thái trước trận/đang thi đấu/kết thúc; tỷ số chưa có không bị chuyển thành `0–0` |
+| Kết quả | Điểm số thực tế từ nguồn dữ liệu; thông tin sân nếu được trả về |
+| Bảng xếp hạng | Vị trí, trận, thắng, hòa, thua, hiệu số và điểm khi dữ liệu có sẵn |
+| Tin tức | Tiêu đề, trích đoạn, thời gian phát hành và liên kết bài gốc (HTTPS) |
+| Zalo | Thử gửi tin, thông báo bắt đầu, nhắc trước trận, kết quả, tin mới; chống gửi trùng bằng lưu trạng thái |
+| Chẩn đoán | Log theo từng nguồn, mốc cập nhật, số lượng dữ liệu và Download diagnostics không chứa ID Zalo |
+| Hiệu năng | Không gửi HTTP tới nhà cung cấp hoặc Zalo lúc startup; polling 60 giây khi có trận trực tiếp, 5 phút khi không có trận; cache riêng cho bảng và tin |
+| Chi tiết trận | Action `football_news.match_details` đọc ESPN summary khi được gọi, không tải mọi chi tiết khi khởi động |
 
-### Quick install — Marketplace (Home Assistant 2026.11 or newer)
+### Giải đấu cấu hình được
 
-1. Open **Settings → Marketplace** in Home Assistant. The Marketplace is built in; you do not need to install HACS separately.
-2. In the upper-right corner, select **Add from link**.
-3. Under **GitHub link**, enter `https://github.com/Adya84/ha-football-hub`, then select **Add**. Connect GitHub if the Marketplace asks you to. If it asks for a type, choose **Integration** and select **Add** again.
-4. Open **Football Hub** in the Marketplace list and select **Install**. Complete the setup flow if it opens.
-5. Open **Football Hub** from the Home Assistant sidebar. If setup did not open automatically, follow [First-time setup](#first-time-setup).
+Premier League, EFL Championship, LaLiga, Bundesliga, Serie A, Ligue 1, Eredivisie, Primeira Liga, Scottish Premiership, MLS, UEFA Champions League, UEFA Europa League và UEFA Conference League.
 
-Football Hub is currently added as a custom repository. Choose the normal **Install** option for the latest stable release; pre-releases are optional.
+Các giải đấu phụ thuộc mã giải do ESPN công bố trong API không chính thức. Có thể có mùa giải, bảng xếp hạng hoặc trận thiếu dữ liệu. Việc chọn giải mới tạo một config entry riêng; dashboard mặc định hiển thị giải được cấu hình đầu tiên.
 
-### Home Assistant 2026.10 or older — HACS
+## Dữ liệu và độ tin cậy
 
-1. Open **HACS → Integrations**, select the three-dot menu, then **Custom repositories**.
-2. Add `https://github.com/Adya84/ha-football-hub` as an **Integration**.
-3. Find **Football Hub** in HACS, select **Download**, then restart Home Assistant.
-4. Continue with [First-time setup](#first-time-setup).
+- **Nguồn:** endpoint JSON công khai, không chính thức của ESPN (không yêu cầu API key).
+- **Scoreboard**: `site.api.espn.com/apis/site/v2/sports/soccer/{league}/scoreboard`.
+- **Bảng xếp hạng**: `site.api.espn.com/apis/v2/sports/soccer/{league}/standings`.
+- **Tin tức**: `site.api.espn.com/apis/site/v2/sports/soccer/{league}/news`.
+- **Chi tiết trận (theo yêu cầu)**: `site.api.espn.com/apis/site/v2/sports/soccer/{league}/summary?event=...`; chọn nút **Chi tiết** của một trận trên dashboard để tải diễn biến và thống kê có sẵn.
 
-On Home Assistant 2026.11 or newer, installed HACS repositories migrate to the Marketplace automatically. The repository's `hacs.json` file remains in place because the Marketplace uses it too.
+Các endpoint này **không phải API được ESPN cam kết hỗ trợ**, có thể thay đổi cấu trúc, giới hạn truy cập hoặc ngừng hoạt động bất kỳ lúc nào. Football News không bịa thông số khi thiếu dữ liệu. Thời gian làm mới và trạng thái lỗi được hiển thị để tiện xác minh. Không dùng dữ liệu này làm cơ sở duy nhất cho hoạt động tài chính/cá cược.
 
-### Manual installation
+## Cấu hình thông báo Zalo
 
-1. Download the source ZIP for the required [release](https://github.com/Adya84/ha-football-hub/releases), then extract it.
-2. In your Home Assistant configuration directory, create `custom_components` if it does not already exist.
-3. Copy the extracted `custom_components/football_hub` folder so the final path is exactly:
+Football News **không đăng nhập trực tiếp vào Zalo** và không nhận/lưu mật khẩu Zalo; ứng dụng chuyển tin qua action `zalo_bot.send_message` của custom integration Zalo Bot đã cài đặt.
 
-   ```text
-   config/custom_components/football_hub/manifest.json
-   ```
+Yêu cầu: cài `zalo_bot` và Zalo Bot Server tương thích, kiểm tra tài khoản Zalo đang đăng nhập, bật entity **Markdown** trong Zalo Bot để nhận rich-text. Xem [repo Zalo Bot](https://github.com/khaisilk1910/zalo-bot-hacs) và [Zalo Bot Server](https://github.com/khaisilk1910/zalo-bot-server).
 
-   Do not copy the outer repository folder or create a nested `football_hub/football_hub` folder.
-4. Restart Home Assistant fully: **Settings → System → Restart Home Assistant**.
-5. Continue with [First-time setup](#first-time-setup).
+1. **Settings → Devices & services → Football News → Configure**.
+2. Chọn **Ngôn ngữ dashboard: Tiếng Việt**.
+3. Tùy chọn **Lọc tên đội bóng**, ví dụ `Arsenal` (để trống = mọi đội của giải).
+4. Bật **Bật thông báo Zalo**.
+5. Điền `account_selection` (số tài khoản gửi đang đăng nhập trong Zalo Bot), `thread_id` dạng **chuỗi ký tự**, và `type` (`0` = người dùng, `1` = nhóm).
+6. Bật hoặc tắt từng thông báo: **lịch thi đấu**, **bắt đầu trận**, **kết quả**, **tin tức**. Chọn nhắc trước **5–120 phút**.
+7. Lưu cấu hình và chạy action `football_news.test_zalo` để kiểm tra.
 
-### First-time setup
+Đối với Zalo ID dài, nhập `zalo:2036121378794772276` (minh họa) thay vì ép sang số. Thao tác này bảo toàn ID khi đi qua JSON/JavaScript. Không sử dụng `| int` hoặc `| float` cho Zalo ID. Không điền ID cá nhân thật vào GitHub, issue hoặc file YAML công khai.
 
-1. In Home Assistant, go to **Settings → Devices & services**.
-2. Select **Add integration**, search for **Football Hub**, and select it.
-3. Confirm the empty setup form. Football Hub starts with the English Premier League and does not require an API key.
-4. Open **Football Hub** from the Home Assistant sidebar.
-5. Use the competition controls to choose your country, competition and season. Add clubs in **My Club** to follow them across supported competitions.
+### Tin nhắn được định dạng theo README Zalo
 
-### Updating Football Hub
+**Nhắc lịch thi đấu:**
 
-**Marketplace (Home Assistant 2026.11 or newer):** Open **Settings → Updates**, install the Football Hub update, then restart Home Assistant. You can also open its page under **Settings → Marketplace**.
+```text
+{big}{orange}**⏰ FOOTBALL NEWS · SẮP THI ĐẤU**{/orange}{/big}
+**Arsenal**  ⚔️  **Chelsea**
+🏆 Premier League
+🗓 12/11 02:45
+🏟 Emirates Stadium
+{small}Lịch có thể thay đổi · Giờ theo múi giờ Home Assistant{/small}
+```
 
-**HACS (Home Assistant 2026.10 or older):** Open **HACS → Integrations**, select Football Hub, install the update, then restart Home Assistant.
+**Kết quả trận đấu:**
 
-**Manual installation:** Download the new release, replace only `config/custom_components/football_hub`, and restart Home Assistant. Keep your Home Assistant configuration directory and do not remove unrelated custom components.
+```text
+{big}{green}**🏁 FOOTBALL NEWS · KẾT QUẢ**{/green}{/big}
+**Arsenal**  ⚔️  **Chelsea**
+{big}**2 - 1**{/big}
+🏆 Premier League
+🗓 12/11 02:45
+{small}Kết quả theo dữ liệu ESPN · Home Assistant{/small}
+```
 
-After any update, hard-refresh the Football Hub browser page with **Ctrl+F5** (Windows/Linux) or **Cmd+Shift+R** (macOS). This ensures the new dashboard JavaScript is loaded.
+**Tin tức:**
 
-### Installation checks
+```text
+{big}{green}**📰 FOOTBALL NEWS · TIN MỚI**{/green}{/big}
+[Tiêu đề lấy nguyên từ dữ liệu nguồn]
+🏆 Premier League
+🔗 https://www.espn.com/...
+{small}Nguồn: ESPN · Thông báo từ Home Assistant{/small}
+```
 
-- **Football Hub is not listed in Add integration:** Confirm the path ends in `custom_components/football_hub/manifest.json`, restart Home Assistant, and check the logs for a manifest or import error.
-- **The panel still shows an older version:** Restart Home Assistant, then hard-refresh the browser. Clear the browser cache for your Home Assistant URL if needed.
-- **Marketplace cannot add the repository:** Check that the GitHub link is exactly `https://github.com/Adya84/ha-football-hub`. Connect GitHub if prompted, and select **Integration** if the Marketplace asks for a type. On older Home Assistant versions, add it as an **Integration** in HACS instead.
+Các format chỉ dùng style có trong tài liệu Zalo Bot: `**bold**`, `{big}`, `{small}`, `{green}`, `{orange}`; không truyền màu HEX không được hỗ trợ. Zalo Server nhận `thread_id` kiểu chuỗi và gửi message theo đúng action:
 
----
+```yaml
+action: zalo_bot.send_message
+data:
+  account_selection: "+84123456789"     # Thay bằng tài khoản gửi của bạn
+  thread_id: "zalo:2036121378794772276"  # Ví dụ, thay bằng ID của bạn
+  type: "1"                              # 1 = group, 0 = user
+  message: |
+    {big}{green}**⚽ FOOTBALL NEWS**{/green}{/big}
+    Thử định dạng từ Home Assistant.
+```
 
-## What Football Hub includes
+**Cách hoạt động:** nhắc lịch gửi một lần trong cửa sổ đã cấu hình, thông báo bắt đầu/kết quả chỉ gửi khi nhận thấy thay đổi trạng thái trận; tin mới gửi tối đa các bài mới gần đây, không gửi hàng loạt bài cũ ở lần khởi chạy đầu tiên. Dedupe lưu trong Home Assistant `.storage` qua `Store`. Nếu HA ngắt mạng hoặc tắt máy lúc diễn ra sự kiện, thông báo bị bỏ lỡ có thể không được gửi bù. Việc nhận tin phụ thuộc tài khoản, Zalo Server và quyền hạn nhóm.
 
-### Live Centre
+## Các action Home Assistant
 
-- Worldwide live scores grouped by country and competition
-- Country flags, match timers, goals, cards, substitutions and score updates
-- Starred preferred competitions and favourite-club priority
-- Optional on-page alerts for kick-off, goals, cards, half-time and full-time
-- Individual match notification selection, plus Select all matches and Deselect non-favourites controls
-- A green LIVE badge during play, plus clear half-time, full-time and extra-time states
-- Online/offline status, live-match count and an update-age timer
-- Match details with timeline, statistics, line-ups, venue, referee and weather where available
-- Optional Sports Streams hand-off links for exact football-event matches (requires Sports Streams to be installed in Stremio)
+### `football_news.refresh`
 
-### Watch live matches with Stremio + Sports Streams
+```yaml
+action: football_news.refresh
+data: {}
+```
 
-Football Hub can optionally add a **Watch** button beside a live match. Football Hub does not host video or choose a broadcaster. It compares the football fixture with the public event names supplied by the Sports Streams add-on and, when one exact match is found, hands the event over to Stremio so you can choose from the sources that Sports Streams makes available.
+### `football_news.test_zalo`
 
-> Use streaming services and add-ons only where you have the right to access the content in your country. Availability, source quality and legality are controlled by the third-party service, not Football Hub.
+```yaml
+action: football_news.test_zalo
+data: {}
+```
 
-#### 1. Create a Stremio account
+### `football_news.match_details`
 
-1. Install the latest **Stremio** app for your device from [stremio.com/downloads](https://www.stremio.com/downloads), or use Stremio Web.
-2. Open Stremio and create/sign in to your Stremio account.
-3. Stay signed in to the same account in the browser/device you will open from Football Hub. Stremio synchronises installed add-ons across devices on the same account.
+```yaml
+action: football_news.match_details
+data:
+  event_id: "401234567" # ví dụ, thay bằng mã trận thực tế
+response_variable: football_match
+```
 
-#### 2. Configure Sports Streams
+Nếu có nhiều giải, nhập thêm `entry_id` trong action để chọn cấu hình cụ thể. Mã trận là ID từ ESPN; action trả `header`, `boxscore`, `key_events`, `scoring_plays` có sẵn, không tự tạo dữ liệu giả.
 
-1. Open the [Sports Streams configuration page](https://sports.highfly.dev/configure).
-2. Choose the sports and preferences you want. For Football Hub, make sure **Football** is included if you are filtering the catalogue.
-3. Sports Streams currently offers a free tier and optional paid/premium features. A paid account is **not required by Football Hub**; Football Hub only needs a valid Sports Streams manifest URL.
-4. Click **Add to Stremio Web** or **Install in Stremio** to add Sports Streams to your Stremio account.
-5. In Stremio, open **Add-ons** and confirm **Sports Streams** appears as installed.
+## Entity được tạo
 
-Sports Streams says its catalogue normally refreshes every 60–120 seconds. If a match has only just started, refresh Stremio/Football Hub before assuming it is unavailable.
+Mỗi giải được cấu hình tạo thiết bị `Football News · <league>` với các entity: **Số trận trực tiếp**, **Số trận sắp diễn ra**, **Số tin tức**, **Lịch trận tiếp theo**, **Lần cập nhật dữ liệu**, **Nguồn dữ liệu sẵn sàng**. ID entity thực tế do Home Assistant sinh và có thể khác nhau. Dữ liệu chi tiết tải qua websocket khi mở dashboard, không đưa toàn bộ tin tức vào thuộc tính sensor để tránh tăng kích thước Recorder.
 
-#### 3. Copy your Sports Streams manifest URL
+## Ngôn ngữ
 
-Football Hub needs the **raw manifest URL**, not the configure-page address.
+- Chuyển ngôn ngữ Home Assistant sang tiếng Việt để các bản dịch config/options/action/entity hiển thị bằng tiếng Việt.
+- Vào **Football News → Configure** để chọn tiếng Việt/English cho dashboard.
+- Tên riêng của đội bóng, giải đấu, bài báo là dữ liệu gốc của nhà cung cấp, **không dịch máy** để tránh bóp méo thông tin.
 
-1. Return to the [Sports Streams configuration page](https://sports.highfly.dev/configure).
-2. Set your preferences.
-3. Use the **Copy** button on the page. Sports Streams documents this as the way to copy the raw manifest URL.
-4. The copied value should be an HTTPS address ending in **`/manifest.json`**, for example:
+## Log và chẩn đoán
 
-   `https://sports.highfly.to/YOUR-TOKEN/manifest.json`
+Mở **Settings → System → Logs**, lọc `football_news`. Có thể bật debug trong `configuration.yaml`:
 
-5. **Keep this URL private.** It can contain a personal/configuration token. Do not post it in GitHub issues, screenshots or logs.
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.football_news: debug
+```
 
-If you change your Sports Streams preferences later, copy the newly generated manifest URL and save the new value in Football Hub.
+Khởi động lại HA sau khi đổi YAML. Log hiển thị nhóm dữ liệu lỗi và HTTP status, không hiển thị nội dung tin hoặc ID Zalo. Tại **Settings → Devices & services → Football News → Download diagnostics** để tải chẩn đoán (chỉ tổng số mục, thời gian thành công và flag thông báo).
 
-#### 4. Add the manifest to Football Hub
+Nếu có nguồn trả về lỗi mạng: Football News giữ kết quả gần nhất trong bộ nhớ của phiên HA hiện tại và hiển thị cảnh báo. Sau restart mà mất mạng, sensor có thể `unavailable` đến khi dữ liệu tải được. Bảng xếp hạng giữ cache 6 giờ, tin tức 30 phút, lịch thi đấu tối đa 60 giây trong bộ nhớ; không ghi raw provider JSON vào `.storage`.
 
-1. Open **Football Hub → Live**.
-2. Open the **Sports Streams (Beta)** settings section.
-3. Paste the complete Sports Streams manifest URL into **Sports Streams manifest URL**.
-4. Press **Save Sports Streams link**.
-5. Press **Refresh** on the Live page, or restart Home Assistant if the catalogue does not update immediately.
+## Nâng cấp từ Football Hub cũ
 
-Football Hub accepts the Sports Streams HTTPS manifest and uses its football catalogue for event-name matching. It does **not** retrieve or store the underlying video stream URLs.
+**Không phải nâng cấp tại chỗ.** Domain mới `football_news`, không phải `football_hub`, nên không có migration tự động cho config entry, yêu thích, trang riêng hay dữ liệu Last Man Standing / Acca League. Nên sao lưu Home Assistant trước, giữ tích hợp Football Hub cũ trong khi thử Football News, rồi gỡ theo nhu cầu. Không đổi tên folder `football_hub` thành `football_news`: code cũ có license hạn chế và các import/domain không tương thích.
 
-#### 5. Use the Watch button
+## Biểu tượng và giao diện đỏ–vàng
 
-When Football Hub finds one exact Sports Streams event for the two teams:
+- `custom_components/football_news/brand/icon.png` (256 × 256) và `icon@2x.png` (512 × 512): bóng đá, biểu tượng nhà Home Assistant, hình báo NEWS; phối màu đỏ và vàng.
+- Dashboard sử dụng phối màu đỏ đô, đỏ tươi và vàng kim; không còn tông cyan/teal của bản trước.
+- Biểu tượng Home Assistant chỉ mang ý nghĩa hỗ trợ nền tảng, **không ngụ ý đây là tích hợp chính thức của Home Assistant**. Tên và dấu hiệu nhận diện Home Assistant thuộc chủ sở hữu tương ứng.
 
-1. A green **Watch** button appears on the compact live-match row.
-2. Press **Watch**.
-3. Stremio Web opens the matched sports event and requests the available sources for that event.
-4. Choose the source you want from Stremio's stream list.
-5. Playback is then handled by Stremio/Sports Streams.
+## File `.gitignore` ở đâu?
 
-Football Hub deliberately does not choose a particular source. Sports Streams itself recommends trying another source from its stream list if one is buffering or fails.
+File **`.gitignore` có tại thư mục gốc** của repository: `Football-News/.gitignore`, cùng cấp với `README.md` và `hacs.json`. Trên một số hệ điều hành, tệp bắt đầu bằng dấu chấm sẽ bị ẩn. Dùng `ls -la` trên Linux/macOS hoặc bật **Hidden items** trong File Explorer (Windows) để xem.
 
-#### Watch button not appearing?
+**Phân biệt 2 bản ZIP:**
 
-Check these in order:
+- `Football-News-repository.zip` (dùng để đẩy GitHub): **có `.gitignore`**, `.github`, `LICENSE`, test, README và toàn bộ mã nguồn.
+- `football_news.zip` (asset cài Marketplace/HACS): chỉ chứa các file của `custom_components/football_news` ở root ZIP, **không có `.gitignore`**, vì đây là tệp dành cho Git chứ không dùng khi cài Home Assistant.
 
-1. Make sure the fixture is actually present in Sports Streams.
-2. Confirm Sports Streams is installed in the Stremio account you are using.
-3. Re-copy the manifest URL from Sports Streams and make sure it ends in `/manifest.json`.
-4. In **Football Hub → Live → Sports Streams (Beta)**, save the URL again and refresh the page.
-5. The button only appears when Football Hub can identify **one exact team-v-team event**. Ambiguous or differently named events are intentionally not linked.
-6. If Sports Streams shows no matches, refresh/restart Stremio and try again after a minute or two.
-7. If the correct event opens but a source is wrong, return to the stream list and choose another source. Football Hub only matches the event metadata; it cannot verify the video carried by a third-party source.
+## Repository và phát hành bản đầu tiên
 
-#### Privacy and security
+Cấu trúc:
 
-The Sports Streams manifest can contain a token in its URL. Treat it like a private credential. Football Hub needs the URL for catalogue matching, but you should redact the token before sharing diagnostics publicly.
+```text
+Football-News/
+├── .github/workflows/{validate.yml,release.yml}
+├── .gitignore
+├── LICENSE
+├── README.md
+├── CHANGELOG.md
+├── hacs.json
+├── custom_components/football_news/
+│   ├── __init__.py, config_flow.py, coordinator.py
+│   ├── provider.py, models.py, notifications.py
+│   ├── sensor.py, binary_sensor.py, diagnostics.py
+│   ├── manifest.json, services.yaml, strings.json
+│   ├── translations/{vi.json,en.json}
+│   ├── brand/{icon.png,icon@2x.png}
+│   └── frontend/panel.js
+└── tests/
+```
 
-### My Club
+Đẩy toàn bộ cấu trúc lên `https://github.com/khaisilk1910/Football-News`:
 
-Follow up to five favourite clubs across countries and competitions. Club pages can show profile information, league position, upcoming fixtures, results, squad, injuries, suspensions, transfers, club records and trophies.
+```bash
+git init
+git branch -M main
+git remote add origin https://github.com/khaisilk1910/Football-News.git
+git add .
+git commit -m "Initial Football News release"
+git push -u origin main
+```
 
-Each favourite club is also available through Home Assistant sensors. Removing a club from **My Club** removes its associated Football Hub device and sensors.
+Sau khi `Validate Football News` chạy thành công, tạo tag **trùng** `version` trong `manifest.json`:
 
-### Fixtures, results and tables
+```bash
+git tag -a v1.0.1 -m "Football News 1.0.1"
+git push origin v1.0.1
+```
 
-- Full fixture lists with local kick-off dates and times
-- Completed results, scores and match status
-- Domestic and supported cup coverage
-- League tables, scorers, assists, player statistics and squad information where supplied by the provider
+Workflow `.github/workflows/release.yml` chạy unit test, so khớp tag/version, dùng `scripts/build_release.py` đóng `football_news.zip` sao cho `manifest.json` nằm **ngay root ZIP release**, rồi tạo GitHub Release. `hacs.json` dùng `zip_release: true` và `filename: football_news.zip`; nếu Release thiếu asset này, Marketplace sẽ không tải được. Không thể tự động xác nhận một repo GitHub đã push/publish từ môi trường tạo gói này.
 
-### Last Man Standing
+Với mỗi phiên bản tiếp theo, cập nhật đồng bộ `const.VERSION`, `manifest.json.version`, URL cache phiên bản JS theo constant; commit rồi tạo **tag mới**, không force-push tag cũ.
 
-- Private competitions with player links and hidden picks until the deadline
-- Automatic result checking and player status grouping
-- Live match score and minute for active selections
-- Buy-back support with visible paid-back status
-- Payment tracking, prize fund, reminders and previous winners
-- Restart a completed competition with the same player links
+Để Marketplace tìm thấy repository trong catalog mặc định thay vì chỉ **Add from link**, cần đáp ứng thêm quy trình xét duyệt và thương hiệu của Home Assistant; việc có `hacs.json` **không đảm bảo** được duyệt vào catalog chính thức.
 
-### Acca League
+## Kiểm thử và đóng góp
 
-- Two-pick 3/1/0 scoring competitions
-- Round fixtures and result checking across selected competitions
-- Payment/payer tracking and historic correction controls
-- Shared standings and round history
+```bash
+python -m unittest discover -s tests -p 'test_*.py' -v
+python -m compileall -q custom_components/football_news
+node --check custom_components/football_news/frontend/panel.js
+```
 
----
+`hassfest` và HACS validation được khai báo trong GitHub Actions nhưng chỉ thật sự được kiểm chứng khi chạy CI trên GitHub. Mở issue kèm diagnostics đã được che thông tin nếu cần hỗ trợ. Không đăng cookie, token Zalo hoặc ID người dùng/nhóm.
 
-## Supported football coverage
+## Giấy phép và lưu ý
 
-Football Hub supports a wide range of domestic leagues, cups, UEFA competitions and international football, including England, Scotland, Wales, Ireland, major European leagues and United States coverage. Available details depend on the data available for each fixture and competition.
-
----
-
-## Data refresh and troubleshooting
-
-Live scores refresh more often than fixtures, tables and club information. If a panel looks outdated after an update:
-
-1. Restart Home Assistant.
-2. Hard-refresh Football Hub with **Ctrl+F5**.
-3. Open **Live** and press **Refresh** if needed.
-4. Check **Settings → System → Logs** for a Football Hub error and include it in an [issue](https://github.com/Adya84/ha-football-hub/issues).
-
----
-
-## Support Football Hub
-
-Football Hub is independently developed by Adrian Apel. You can support future updates through [Ko-fi](https://ko-fi.com/ady1984) or [PayPal](https://paypal.me/graffidoodle). Please also star the repository and report problems through the [issue tracker](https://github.com/Adya84/ha-football-hub/issues).
-
----
-
-## Licence
-
-Copyright (C) 2026 Adrian Apel
-
-This software is provided for personal, private and non-commercial use only. Redistribution, resale, rebranding, commercial use and publication of modified versions are prohibited without prior written permission. See [LICENSE](LICENSE) for the full terms.
-
----
-
-## Disclaimer
-
-Football Hub is an independent Home Assistant integration. It is not affiliated with, endorsed by, sponsored by or officially connected to Home Assistant, HACS, FIFA, UEFA, any football data provider, association, competition, club, venue or broadcaster. All trademarks, competition names, club names, team names and logos remain the property of their respective owners.
+Mã mới trong repository này dùng **MIT**; tài sản icon được tạo riêng cho Football News. Không sử dụng code/hình ảnh của dự án Football Hub có giấy phép hạn chế. Tên giải, CLB và nhãn hiệu dữ liệu thuộc chủ sở hữu tương ứng. Football News không liên kết hoặc được ESPN, Zalo, Home Assistant, HACS hay các ban tổ chức giải đấu bảo trợ.
