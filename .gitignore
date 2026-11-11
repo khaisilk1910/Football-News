@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Home Assistant runtime files / credentials
+.storage/
+secrets.yaml
+*.db
+*.db-shm
+*.db-wal
+home-assistant.log*
+*.token
+.env
+.env.*
+!.env.example
+
+# Local release artifacts
+*.zip
+!tests/fixtures/*.zip
+
+# Transient test / editor logs
+*.log
+*.tmp
+*.bak
+*.orig
+.pyright/
+.nox/
