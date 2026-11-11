@@ -1,6 +1,5 @@
 # ⚽ Football News — Home Assistant
 
-[![Validate](https://github.com/khaisilk1910/Football-News/actions/workflows/validate.yml/badge.svg)](https://github.com/khaisilk1910/Football-News/actions/workflows/validate.yml)
 [![Release](https://img.shields.io/github/v/release/khaisilk1910/Football-News?display_name=tag)](https://github.com/khaisilk1910/Football-News/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.11%2B-18bcf2)](https://www.home-assistant.io/)
 [![Language](https://img.shields.io/badge/ng%C3%B4n%20ng%E1%BB%AF-Ti%E1%BA%BFng%20Vi%E1%BB%87t-20c5bb)](#ng%C3%B4n-ng%E1%BB%AF)
