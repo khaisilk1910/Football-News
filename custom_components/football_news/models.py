@@ -182,5 +182,89 @@ def normalize_summary(payload: dict) -> dict:
                 stats.append({"label": label[:90], "value": value[:45]})
         if team.get("displayName"):
             teams.append({"name": _text(team.get("displayName")), "statistics": stats})
+    officials = []
+    for official in _list(game_info.get("officials"))[:8]:
+        official = _dict(official)
+        name = _text(official.get("displayName") or official.get("fullName"))
+        if name:
+            officials.append({"name": name, "role": _text(official.get("position") or official.get("type"))})
+    weather = _dict(game_info.get("weather"))
+    roster_groups = _list(payload.get("rosters"))
+    lineups = []
+    for group in roster_groups[:2]:
+        group = _dict(group)
+        club = _dict(group.get("team"))
+        players = []
+        for member in _list(group.get("roster"))[:30]:
+            member = _dict(member)
+            athlete = _dict(member.get("athlete")) or member
+            name = _text(athlete.get("displayName") or athlete.get("fullName"))
+            if name:
+                players.append({"name": name, "starter": bool(member.get("starter", False)),
+                                "number": _text(athlete.get("jersey")),
+                                "position": _text(_dict(athlete.get("position")).get("abbreviation"))})
+        if players:
+            lineups.append({"team": _text(club.get("displayName")), "players": players})
     return {"venue": _text(venue.get("fullName")), "attendance": _int(game_info.get("attendance")),
-            "events": details, "teams": teams, "source": "ESPN"}
+            "events": details, "teams": teams, "officials": officials,
+            "weather": _text(weather.get("displayValue") or weather.get("description")),
+            "lineups": lineups, "source": "ESPN"}
+
+
+def normalize_club(payload: dict, league: str) -> dict:
+    """Read an optional ESPN team response, exposing only verified fields."""
+    base = _dict(payload)
+    team = _dict(base.get("team")) or base
+    logos = _list(team.get("logos"))
+    location = _text(team.get("location"))
+    return {
+        "id": _text(team.get("id")), "league": league,
+        "name": _text(team.get("displayName") or team.get("name")),
+        "abbreviation": _text(team.get("abbreviation")),
+        "location": location,
+        "logo": _url(_dict(logos[0]).get("href") if logos else team.get("logo")),
+        "color": _text(team.get("color"))[:6],
+        "links": [{"label": _text(_dict(link).get("text")), "url": _url(_dict(link).get("href"))}
+                  for link in _list(team.get("links"))[:8] if _url(_dict(link).get("href"))],
+    }
+
+
+def normalize_roster(payload: dict) -> list[dict]:
+    """A safe subset of available squad and athlete information."""
+    source = _dict(payload)
+    athletes = _list(source.get("athletes"))
+    if not athletes:
+        for group in _list(source.get("groups")):
+            athletes.extend(_list(_dict(group).get("athletes")))
+    output = []
+    for item in athletes[:80]:
+        athlete = _dict(item)
+        if not athlete.get("displayName"):
+            continue
+        position = _dict(athlete.get("position"))
+        photo = _dict(athlete.get("headshot"))
+        output.append({
+            "id": _text(athlete.get("id")), "name": _text(athlete.get("displayName")),
+            "position": _text(position.get("displayName") or position.get("abbreviation")),
+            "number": _text(athlete.get("jersey")), "photo": _url(photo.get("href")),
+            "age": _int(athlete.get("age")),
+        })
+    return output
+
+
+def normalize_leaders(payload: dict) -> list[dict]:
+    """Provider-dependent top scorer/assist leader tables."""
+    output = []
+    for group in _list(_dict(payload).get("leaders"))[:25]:
+        group = _dict(group)
+        category = _text(group.get("displayName") or group.get("name"))
+        for leader in _list(group.get("leaders"))[:25]:
+            leader = _dict(leader)
+            athlete = _dict(leader.get("athlete"))
+            team = _dict(leader.get("team"))
+            if not athlete.get("displayName"):
+                continue
+            output.append({"category": category, "player": _text(athlete.get("displayName")),
+                           "team": _text(team.get("displayName")),
+                           "value": _text(leader.get("displayValue") or leader.get("value"))})
+    return output[:100]

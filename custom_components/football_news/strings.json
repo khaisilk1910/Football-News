@@ -5,10 +5,14 @@
       "user": {
         "title": "Set up Football News",
         "description": "Select a football competition. No API key required. Data fetches start after Home Assistant has finished starting.",
-        "data": {"league": "Competition"}
+        "data": {
+          "league": "Competition"
+        }
       }
     },
-    "abort": {"already_configured": "This competition is already configured."}
+    "abort": {
+      "already_configured": "This competition is already configured."
+    }
   },
   "options": {
     "step": {
@@ -26,25 +30,122 @@
           "kickoff_alerts": "Match kickoff alerts",
           "result_alerts": "Full-time result alerts",
           "news_alerts": "New article alerts",
-          "reminder_minutes": "Reminder lead time (minutes)"
+          "reminder_minutes": "Reminder lead time (minutes)",
+          "goal_alerts": "Goal and score-change notifications"
         }
       }
     },
-    "error": {"zalo_missing_fields": "Please provide the sender account and recipient ID before enabling Zalo."}
+    "error": {
+      "zalo_missing_fields": "Please provide the sender account and recipient ID before enabling Zalo."
+    }
   },
   "entity": {
     "sensor": {
-      "live_matches": {"name": "Live matches"},
-      "upcoming_matches": {"name": "Upcoming matches"},
-      "news_articles": {"name": "News articles"},
-      "next_kickoff": {"name": "Next kickoff"},
-      "last_update": {"name": "Last data update"}
+      "live_matches": {
+        "name": "Live matches"
+      },
+      "upcoming_matches": {
+        "name": "Upcoming matches"
+      },
+      "news_articles": {
+        "name": "News articles"
+      },
+      "next_kickoff": {
+        "name": "Next kickoff"
+      },
+      "last_update": {
+        "name": "Last data update"
+      },
+      "favorite_clubs": {
+        "name": "Favourite clubs"
+      }
     },
-    "binary_sensor": {"source_connected": {"name": "Data source ready"}}
+    "binary_sensor": {
+      "source_connected": {
+        "name": "Data source ready"
+      }
+    }
   },
   "services": {
-    "refresh": {"name": "Refresh data", "description": "Refresh fixtures, news and standings.", "fields": {"entry_id": {"name": "Configuration entry ID", "description": "Optional; uses first league by default."}}},
-    "test_zalo": {"name": "Send Zalo test", "description": "Send a formatted test via the installed Zalo Bot integration.", "fields": {"entry_id": {"name": "Configuration entry ID", "description": "Optional; uses first league by default."}}},
-    "match_details": {"name": "Get match details", "description": "Fetch ESPN match data by ID; returns data for an automation.", "fields": {"entry_id": {"name": "Configuration entry ID", "description": "Optional; uses first league by default."}, "event_id": {"name": "ESPN event ID", "description": "Numeric ID from a Football News fixture."}}}
+    "refresh": {
+      "name": "Refresh data",
+      "description": "Refresh fixtures, news and standings.",
+      "fields": {
+        "entry_id": {
+          "name": "Configuration entry ID",
+          "description": "Optional; uses first league by default."
+        }
+      }
+    },
+    "test_zalo": {
+      "name": "Send Zalo test",
+      "description": "Send a formatted test via the installed Zalo Bot integration.",
+      "fields": {
+        "entry_id": {
+          "name": "Configuration entry ID",
+          "description": "Optional; uses first league by default."
+        }
+      }
+    },
+    "match_details": {
+      "name": "Get match details",
+      "description": "Fetch ESPN match data by ID; returns data for an automation.",
+      "fields": {
+        "entry_id": {
+          "name": "Configuration entry ID",
+          "description": "Optional; uses first league by default."
+        },
+        "event_id": {
+          "name": "ESPN event ID",
+          "description": "Numeric ID from a Football News fixture."
+        }
+      }
+    },
+    "manage_competition": {
+      "name": "Manage a prediction league",
+      "description": "Create LMS/Acca leagues, add players, configure rounds, submit picks, record payments and buybacks.",
+      "fields": {
+        "operation": {
+          "name": "Operation"
+        },
+        "competition_id": {
+          "name": "Competition ID"
+        },
+        "kind": {
+          "name": "League type"
+        },
+        "title": {
+          "name": "Title"
+        },
+        "league": {
+          "name": "Football competition"
+        },
+        "player_id": {
+          "name": "Player ID"
+        },
+        "player_name": {
+          "name": "Player name"
+        },
+        "round_id": {
+          "name": "Round ID"
+        },
+        "deadline": {
+          "name": "ISO8601 deadline"
+        },
+        "fixture_ids": {
+          "name": "ESPN fixture IDs"
+        },
+        "picks": {
+          "name": "Selections"
+        },
+        "amount": {
+          "name": "Amount paid"
+        }
+      }
+    },
+    "get_competitions": {
+      "name": "List prediction leagues",
+      "description": "Fetch private league standings; pending picks are hidden."
+    }
   }
 }

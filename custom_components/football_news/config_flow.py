@@ -63,6 +63,7 @@ class FootballNewsOptionsFlow(config_entries.OptionsFlow):
             vol.Required("zalo_thread_type", default=options["zalo_thread_type"]): vol.In({"0": "Cá nhân", "1": "Nhóm"}),
             vol.Required("schedule_alerts", default=options["schedule_alerts"]): bool,
             vol.Required("kickoff_alerts", default=options["kickoff_alerts"]): bool,
+            vol.Required("goal_alerts", default=options["goal_alerts"]): bool,
             vol.Required("result_alerts", default=options["result_alerts"]): bool,
             vol.Required("news_alerts", default=options["news_alerts"]): bool,
             vol.Required("reminder_minutes", default=options["reminder_minutes"]): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),

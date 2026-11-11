@@ -49,47 +49,321 @@ const STYLE = `
 @media(max-width:940px){.shell{display:block;padding:17px}.aside{position:static;padding:0}.brand{margin:0 0 14px}.nav{overflow-x:auto;flex-direction:row;margin-bottom:20px;padding-bottom:7px}.nav button{width:auto;white-space:nowrap}.source-note{display:none}.top h1{font-size:27px}}
 @media(max-width:600px){.top{align-items:start}.top p{font-size:12px}.actions{margin-top:6px}.refresh{padding:9px 11px}.hero{padding:20px;min-height:140px}.hero-icon{width:72px;height:72px;border-radius:17px}.hero h2{font-size:22px}.metrics{gap:8px}.metric{padding:12px}.metric .num{font-size:24px}.tiles{grid-template-columns:1fr}.block{padding:16px}}
 `;
+/* The interface is independent of Football Hub assets and scripts. */
+Object.assign(FN_WORDS.vi, {
+  clubs:'Câu lạc bộ của tôi', competitions:'Giải dự đoán', leaders:'Cầu thủ nổi bật',
+  allLeagues:'Mọi giải đã cài', selectLeague:'Chọn giải để xem bảng xếp hạng hoặc cầu thủ',
+  favourites:'Yêu thích', pinned:'Ưu tiên', unpin:'Bỏ ưu tiên', favouriteLimit:'Tối đa 5 câu lạc bộ',
+  squad:'Danh sách cầu thủ', standingsTitle:'Bảng xếp hạng', leaderCategory:'Hạng mục',
+  official:'Trọng tài', weather:'Thời tiết', detailsClub:'Thông tin câu lạc bộ',
+  league:'Giải đấu', noClubs:'Chưa chọn câu lạc bộ nào. Dùng ngôi sao cạnh tên đội trong lịch thi đấu.',
+  noCompetition:'Chưa có giải dự đoán. Quản trị viên có thể tạo bằng action football_news.manage_competition.',
+  rounds:'Vòng', players:'Người chơi', fund:'Quỹ', score:'Điểm', active:'Đang thi đấu',
+  adminOnly:'Chỉ quản trị viên Home Assistant được xem và quản lý giải dự đoán.',
+  instructions:'Quản trị dự đoán: dùng các action football_news.manage_competition và football_news.get_competitions.',
+  sources:'Thông tin từ các giải đấu bạn đã cấu hình', dataUnavailable:'Nguồn chưa cung cấp dữ liệu này.',
+  monthTitle:'Lịch theo tháng', monthLoad:'Xem tháng', monthSelected:'Chọn một giải trước khi tìm theo tháng',
+  notifications:'Thông báo theo trận', sound:'Âm báo trong trình duyệt', soundOff:'Tắt âm báo',
+  soundOn:'Bật âm báo', alertHint:'Đánh dấu trận để ưu tiên thông báo; nếu không đánh dấu, áp dụng bộ lọc chung.',
+});
+Object.assign(FN_WORDS.en, {
+  clubs:'My Clubs', competitions:'Predictions', leaders:'Player leaders',
+  allLeagues:'All configured leagues', selectLeague:'Select a league to view standings or leaders',
+  favourites:'Favourites', pinned:'Pinned', unpin:'Unpin', favouriteLimit:'Up to five clubs',
+  squad:'Squad', standingsTitle:'Standings', leaderCategory:'Category',
+  official:'Referee', weather:'Weather', detailsClub:'Club details', league:'Competition',
+  noClubs:'No clubs yet. Use the star beside a team in the match list.',
+  noCompetition:'No prediction competitions. Admins can use football_news.manage_competition.',
+  rounds:'Rounds', players:'Players', fund:'Fund', score:'Points', active:'Active',
+  adminOnly:'Home Assistant administrators only.',
+  instructions:'Manage predictions using football_news.manage_competition and football_news.get_competitions.',
+  sources:'Data from your configured competitions', dataUnavailable:'This data is not available from the provider.',
+  monthTitle:'Monthly fixtures', monthLoad:'Load month', monthSelected:'Select a league before loading a month',
+  notifications:'Match alerts', sound:'Browser sound', soundOff:'Sound off', soundOn:'Sound on',
+  alertHint:'Star matches for targeted alerts; with no starred matches, use the general filter.',
+});
+const MORE_STYLE = `
+.league-bar{display:flex;align-items:center;gap:8px;overflow-x:auto;padding:3px 0 17px;scrollbar-width:thin}
+.league-chip{white-space:nowrap;background:#351720;color:#f5ddc9;border:1px solid #79404a;border-radius:25px;padding:8px 13px;font-size:12px;font-weight:750}
+.league-chip.selected{background:#9d2735;border-color:#ffcf49;color:#fff}.league-chip:hover{border-color:#ffe082}
+.fav{background:transparent;color:#e1b2a9;border:0;padding:4px;line-height:1;font-size:18px}
+.fav.on{color:#ffd34e}.match .side .fav{flex:none}.match .side span{min-width:0}
+.matchhead .mini{display:flex;align-items:center;gap:7px}.minor{font-size:11px;color:#dfaa9e}
+.club-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #65303b;flex-wrap:wrap}
+.club-row strong{flex:1;min-width:120px}.tiny{font-size:12px;color:#dfbfb4}.club-row button{border-radius:8px;background:#552231;border:1px solid #a24855;color:#ffe294;padding:7px 10px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px}
+.stats-tile{padding:14px;background:#2d131e;border:1px solid #6d3942;border-radius:13px}
+.stats-tile b{display:block;color:#ffd356;font-size:20px}.stats-tile span{font-size:12px;color:#dfb7aa}
+.leader-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.leader-list p{padding:11px 14px;border:1px solid #6d3540;border-radius:12px;margin:0;background:#2a141f}
+.mini-info{display:inline-flex;gap:7px;align-items:center;font-size:12px;color:#e1b9ac}
+.modal-body .squad{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:7px;margin:13px 0}
+.modal-body .squad p{margin:0;border-bottom:1px solid #613440;padding:8px}
+.member-id{font-size:11px;opacity:.65}
+@media(max-width:600px){.league-bar{margin-right:-18px}.top{flex-wrap:wrap}.stats-grid{grid-template-columns:repeat(2,1fr)}}
+`;
+
 class FootballNewsPanel extends HTMLElement {
-  constructor(){super();this.attachShadow({mode:'open'});this.tab='overview';this.modal=null;this.data=DEFAULT_DATA;this.lang='vi';this._loading=false;this._last=0;this._lastAttempt=0;this._hass=null;this.shadowRoot.addEventListener('click',e=>this._click(e));}
-  set hass(hass){this._hass=hass;if(this.isConnected&&Date.now()-this._lastAttempt>60000)this.load();}
-  connectedCallback(){this.render();this.load();this._timer=setInterval(()=>{if(!document.hidden)this.load();},90000);}
-  disconnectedCallback(){clearInterval(this._timer);}
-  async _click(e){
-    if(e.target.hasAttribute('data-close')){this.modal=null;this.render();return;}
-    const detail=e.target.closest('[data-detail]');
-    if(detail){
-      const id=detail.dataset.detail;
-      this.modal={loading:true,id};this.render();
-      try{const result=await this._hass.callWS({type:'football_news/match',event_id:id,entry_id:this.data.entry_id});
-        if(this.modal?.id===id)this.modal={id,...alive(result)};
-      }catch(err){if(this.modal?.id===id)this.modal={id,error:true};}
+  constructor() {
+    super();
+    this.attachShadow({mode:'open'});
+    this.tab = 'overview';
+    this.selectedLeague = 'all';
+    this.modal = null;
+    this.data = DEFAULT_DATA;
+    this.lang = 'vi';
+    this.competitions = null;
+    this.leaderCache = {};
+    this.monthData = null;
+    this.monthValue = new Date().toISOString().slice(0,7);
+    this.audioEnabled = false;
+    this._loading = false;
+    this._lastAttempt = 0;
+    this._last = 0;
+    this._hass = null;
+    this.shadowRoot.addEventListener('click', event => this._click(event));
+  }
+  set hass(hass) {
+    this._hass = hass;
+    if (this.isConnected && Date.now() - this._lastAttempt > 60000) this.load();
+  }
+  connectedCallback() {
+    this.render();
+    this.load();
+    this._timer = setInterval(() => {if (!document.hidden) this.load();}, 90000);
+  }
+  disconnectedCallback() {clearInterval(this._timer);}
+  t(key) {return FN_WORDS[this.lang]?.[key] || FN_WORDS.vi[key] || key;}
+  date(iso) {
+    const parsed = ts(iso);
+    if (!parsed) return this.t('unknown');
+    try {
+      return new Intl.DateTimeFormat(this.lang === 'vi' ? 'vi-VN' : 'en-GB', {
+        timeZone: this._hass?.config?.time_zone || undefined,
+        day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,
+      }).format(parsed);
+    } catch {return new Date(parsed).toLocaleString();}
+  }
+  leagues() {return Array.isArray(this.data.leagues) ? this.data.leagues : [];}
+  prefs() {return alive(this.data.preferences);}
+  entries() {return this.leagues().filter(l => this.selectedLeague === 'all' || l.league_code === this.selectedLeague);}
+  merged() {
+    const leagues = this.entries();
+    const fixtures = [], news = [];
+    const newsIds = new Set();
+    for (const league of leagues) {
+      for (const match of (league.fixtures || [])) fixtures.push({...match, league:league.league_code, league_name:league.name});
+      for (const item of (league.news || [])) {
+        if (!newsIds.has(item.url)) {newsIds.add(item.url); news.push({...item, league:league.league_code});}
+      }
+    }
+    news.sort((a,b) => ts(b.published)-ts(a.published));
+    const favourites = this.prefs().clubs || [];
+    const favouriteTeams = new Set(favourites.map(c => `${c.league}:${c.id}`));
+    const isFavourite = f => favouriteTeams.has(`${f.league}:${f.home?.id}`) || favouriteTeams.has(`${f.league}:${f.away?.id}`);
+    const sorted = fixtures.sort((a,b) => ts(a.kickoff)-ts(b.kickoff));
+    return {fixtures:sorted, news, standings:leagues.length === 1 ? (leagues[0].standings || []) : [],
+      favouriteFixtures:sorted.filter(isFavourite)};
+  }
+  async load() {
+    if (this._loading || !this._hass?.callWS) return;
+    this._loading = true;
+    this._lastAttempt = Date.now();
+    try {
+      const data = await this._hass.callWS({type:'football_news/data'});
+      this.data = {...DEFAULT_DATA, ...alive(data)};
+      this.lang = FN_WORDS[data.language] ? data.language : 'vi';
+      if (this.selectedLeague !== 'all' && !this.leagues().some(l => l.league_code === this.selectedLeague)) this.selectedLeague = 'all';
+      this._last = Date.now();
+      this.render();
+    } catch (error) {console.warn('Football News dashboard request failed',error?.message);}
+    finally {this._loading = false;}
+  }
+  async loadCompetitions() {
+    if (!this.data.admin) return;
+    try {
+      const response = await this._hass.callWS({type:'football_news/competitions'});
+      this.competitions = response.competitions || [];
+    } catch (error) {this.competitions = []; console.warn('Football News predictions unavailable',error?.message);}
+    this.render();
+  }
+  async loadLeaders() {
+    if (this.selectedLeague === 'all' || this.leaderCache[this.selectedLeague]) return;
+    const league = this.selectedLeague;
+    this.leaderCache[league] = {loading:true};
+    this.render();
+    try {
+      this.leaderCache[league] = await this._hass.callWS({type:'football_news/leaders',league});
+    } catch {this.leaderCache[league] = {leaders:[],error:true};}
+    this.render();
+  }
+  async _click(event) {
+    const close = event.target.closest('[data-close]');
+    if (close && (close === event.target || close.classList.contains('modal-close'))) {
+      this.modal = null; this.render(); return;
+    }
+    const element = event.target.closest('[data-tab],[data-league],[data-club],[data-match-star],[data-detail],[data-club-detail],[data-refresh],[data-sound],[data-month-fetch]');
+    if (!element) return;
+    const data = element.dataset;
+    if (data.tab) {
+      this.tab = data.tab; this.modal = null; this.render();
+      if (this.tab === 'competitions' && this.competitions === null) await this.loadCompetitions();
+      if (this.tab === 'leaders') await this.loadLeaders();
+      return;
+    }
+    if (data.league && !data.club && !data.matchStar && !data.clubDetail) {
+      this.selectedLeague = data.league;
+      this.render();
+      if (this.tab === 'leaders') await this.loadLeaders();
+      return;
+    }
+    if (data.sound !== undefined) {this.audioEnabled = !this.audioEnabled; this.render(); return;}
+    if (data.monthFetch !== undefined) {
+      const input=this.shadowRoot.querySelector('[data-month-input]');
+      const month=input?.value || this.monthValue;
+      this.monthValue=month;
+      if(this.selectedLeague==='all')return;
+      this.monthData={loading:true,league:this.selectedLeague,month};this.render();
+      try {
+        this.monthData=await this._hass.callWS({type:'football_news/fixtures_month',league:this.selectedLeague,month});
+      } catch {this.monthData={error:true,league:this.selectedLeague,month,fixtures:[]};}
       this.render();return;
     }
-    let btn=e.target.closest('[data-tab]');
-    if(btn){this.tab=btn.dataset.tab;this.modal=null;this.render();return;}
-    if(e.target.closest('[data-refresh]')){
-      try{await this._hass?.callService('football_news','refresh',{});}catch(err){console.warn('Football News refresh error',err?.message);}
-      this.load();
+    if (data.refresh !== undefined) {
+      try {await this._hass?.callService('football_news','refresh',{});} catch (err) {console.warn('Football News refresh error',err?.message);}
+      await this.load();return;
+    }
+    if (data.club || data.matchStar !== undefined) {
+      if (!this.data.admin) return;
+      const command = {type:'football_news/toggle_favourite',kind:data.club?'club':'match',league:data.teamLeague || data.fixtureLeague};
+      if (data.club) {command.team_id=data.club;command.name=data.name;}
+      else {command.event_id=data.matchStar;}
+      try {this.data.preferences=await this._hass.callWS(command);} catch(err) {console.warn('Football News favourite update failed',err?.message);}
+      this.render();return;
+    }
+    if (data.clubDetail) {
+      const league = data.teamLeague, team_id=data.clubDetail;
+      this.modal={type:'club',loading:true,league,team_id};this.render();
+      try {
+        const result=await this._hass.callWS({type:'football_news/club',league,team_id});
+        if(this.modal?.team_id === team_id) this.modal={type:'club',...alive(result)};
+      } catch {if(this.modal?.team_id === team_id) this.modal={type:'club',error:true};}
+      this.render();return;
+    }
+    if (data.detail) {
+      const id=data.detail, league=data.fixtureLeague;
+      this.modal={type:'match',loading:true,id,league};this.render();
+      try {
+        const result=await this._hass.callWS({type:'football_news/match',event_id:id,league});
+        if(this.modal?.id === id) this.modal={type:'match',id,...alive(result)};
+      } catch {if(this.modal?.id === id) this.modal={type:'match',id,error:true};}
+      this.render();
     }
   }
-  async load(){if(this._loading||!this._hass?.callWS)return;this._loading=true;this._lastAttempt=Date.now();try{const data=await this._hass.callWS({type:'football_news/data'});this.data={...DEFAULT_DATA,...alive(data)};this.lang=FN_WORDS[data.language] ? data.language : 'vi';this._last=Date.now();this.render();}catch(err){console.warn('Football News data error',err?.message);}finally{this._loading=false;}}
-  t(key){return FN_WORDS[this.lang]?.[key]||FN_WORDS.vi[key]||key;}
-  date(iso){const n=ts(iso);if(!n)return this.t('unknown');try{return new Intl.DateTimeFormat(this.lang==='vi'?'vi-VN':'en-GB',{timeZone:this._hass?.config?.time_zone||undefined,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(n);}catch{return new Date(n).toLocaleString();}}
-  status(f){if(f.state==='in')return this.t('live');if(f.state==='post')return this.t('final');return this.t('pregame');}
-  matches(items){if(!items.length)return `<div class="empty">${this.t(this.tab==='live'?'noLive':'none')}</div>`;return `<div class="tiles">${items.map(f=>{const home=alive(f.home),away=alive(f.away);const score=f.state==='pre'?'–':`${home.score??'–'} : ${away.score??'–'}`;return `<article class="match"><div class="matchhead"><span>${this.date(f.kickoff)}</span><span class="mark ${esc(f.state)}">${esc(this.status(f))}</span></div><div class="teams"><div class="side">${home.logo?`<img loading="lazy" alt="" src="${esc(home.logo)}">`:''}<span>${esc(home.short_name||home.name||'—')}</span></div><div class="score">${esc(score)}</div><div class="side">${away.logo?`<img loading="lazy" alt="" src="${esc(away.logo)}">`:''}<span>${esc(away.short_name||away.name||'—')}</span></div></div><div class="matchfoot"><span>${esc(f.venue||this.data.league)}</span><span>${esc(f.status||'')}</span><button class="detail-btn" data-detail="${esc(f.id)}">${this.t('details')}</button></div></article>`}).join('')}</div>`;}
-  card(title,body,view){return `<section class="block"><div class="blockhead"><h3>${esc(title)}</h3>${view?`<button data-tab="${view}">${this.t('view')} →</button>`:''}</div>${body}</section>`;}
-  standings(rows){if(!rows.length)return `<div class="empty">${this.t('noTable')}</div>`;return `<div class="tablewrap"><table><thead><tr>${['rank','team','played','wins','draws','losses','diff','pts'].map(k=>`<th>${this.t(k)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${r.position??i+1}</td><td><div class="standing">${r.logo?`<img loading="lazy" src="${esc(r.logo)}" alt="">`:''}${esc(r.name)}</div></td><td>${r.played??'–'}</td><td>${r.wins??'–'}</td><td>${r.draws??'–'}</td><td>${r.losses??'–'}</td><td>${r.difference??'–'}</td><td>${r.points??'–'}</td></tr>`).join('')}</tbody></table></div>`;}
-  news(items){return items.length?items.map(n=>`<a class="news-card" target="_blank" rel="noopener noreferrer" href="${esc(n.url)}"><strong>${esc(n.title)}</strong><span class="snippet">${esc(n.description||'')}</span><small>📰 ${this.t('source')}: ESPN · ${esc(n.published?this.date(n.published):'')} · ${this.t('read')} ↗</small></a>`).join(''):`<div class="empty">${this.t('noNews')}</div>`;}
-  modalMarkup(){
+  status(f) {return f.state === 'in' ? this.t('live') : f.state === 'post' ? this.t('final') : this.t('pregame');}
+  clubStar(match, team) {
+    if (!this.data.admin || !team.id) return '';
+    const isFav=(this.prefs().clubs||[]).some(c=>c.id === team.id && c.league === match.league);
+    return `<button class="fav ${isFav?'on':''}" data-club="${esc(team.id)}" data-name="${esc(team.name)}" data-team-league="${esc(match.league)}" title="${this.t('favourites')}">${isFav?'★':'☆'}</button>`;
+  }
+  matches(items) {
+    if (!items.length) return `<div class="empty">${esc(this.t(this.tab==='live'?'noLive':'none'))}</div>`;
+    const watched = this.prefs().matches || [];
+    return `<div class="tiles">${items.map(f => {
+      const home=alive(f.home),away=alive(f.away);
+      const score=f.state==='pre' ? '–' : `${home.score??'–'} : ${away.score??'–'}`;
+      const flagged=watched.includes(`${f.league}:${f.id}`);
+      return `<article class="match"><div class="matchhead"><span>${esc(f.league_name||f.league)} · ${esc(this.date(f.kickoff))}</span><div class="mini"><span class="mark ${esc(f.state)}">${esc(this.status(f))}</span>${this.data.admin?`<button class="fav ${flagged?'on':''}" data-match-star="${esc(f.id)}" data-fixture-league="${esc(f.league)}" title="${esc(this.t('notifications'))}">${flagged?'🔔':'♧'}</button>`:''}</div></div>
+      <div class="teams"><div class="side">${home.logo?`<img loading="lazy" alt="" src="${esc(home.logo)}">`:''}<span>${esc(home.short_name||home.name||'—')}</span>${this.clubStar(f,home)}</div>
+      <div class="score">${esc(score)}</div><div class="side">${away.logo?`<img loading="lazy" alt="" src="${esc(away.logo)}">`:''}<span>${esc(away.short_name||away.name||'—')}</span>${this.clubStar(f,away)}</div></div>
+      <div class="matchfoot"><span>${esc(f.venue||this.t('unknown'))}</span><span>${esc(f.status||'')}</span><button class="detail-btn" data-detail="${esc(f.id)}" data-fixture-league="${esc(f.league)}">${this.t('details')}</button></div></article>`;
+    }).join('')}</div>`;
+  }
+  card(title, body, view) {
+    return `<section class="block"><div class="blockhead"><h3>${esc(title)}</h3>${view?`<button data-tab="${view}">${this.t('view')} →</button>`:''}</div>${body}</section>`;
+  }
+  standings(rows) {
+    if (!rows.length) return `<div class="empty">${this.selectedLeague==='all'?this.t('selectLeague'):this.t('noTable')}</div>`;
+    return `<div class="tablewrap"><table><thead><tr>${['rank','team','played','wins','draws','losses','diff','pts'].map(k=>`<th>${this.t(k)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${esc(r.position??i+1)}</td><td><div class="standing">${r.logo?`<img loading="lazy" src="${esc(r.logo)}" alt="">`:''}${this.data.admin && r.id?`<button class="fav ${this.prefs().clubs?.some(c=>c.id===r.id&&c.league===this.selectedLeague)?'on':''}" data-club="${esc(r.id)}" data-name="${esc(r.name)}" data-team-league="${esc(this.selectedLeague)}">☆</button>`:''}<span>${esc(r.name)}</span></div></td>${['played','wins','draws','losses','difference','points'].map(k=>`<td>${esc(r[k]??'–')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+  news(items) {
+    return items.length?items.map(n=>`<a class="news-card" target="_blank" rel="noopener noreferrer" href="${esc(n.url)}"><strong>${esc(n.title)}</strong><span class="snippet">${esc(n.description||'')}</span><small>📰 ${esc(n.league)} · ${esc(n.published?this.date(n.published):'')} · ${this.t('read')} ↗</small></a>`).join(''):`<div class="empty">${this.t('noNews')}</div>`;
+  }
+  clubs(fixtures,standings) {
+    const clubs=this.prefs().clubs || [];
+    if(!clubs.length)return `<div class="empty">${this.t('noClubs')}</div>`;
+    return clubs.map(c=>{
+      const games=fixtures.filter(f=>f.league===c.league && [f.home?.id,f.away?.id].includes(c.id));
+      const table=(this.leagues().find(l=>l.league_code===c.league)?.standings||[]).find(r=>r.id===c.id);
+      return `<div class="club-row"><strong>⭐ ${esc(c.name)}</strong><span class="tiny">${esc(c.league)} · ${table?.position?`#${esc(table.position)} · ${esc(table.points??'–')} ${this.t('pts')}`:''} · ${games.length} ${this.t('matches')}</span><button data-club-detail="${esc(c.id)}" data-team-league="${esc(c.league)}">${this.t('detailsClub')}</button>${this.data.admin?`<button data-club="${esc(c.id)}" data-name="${esc(c.name)}" data-team-league="${esc(c.league)}">×</button>`:''}</div>`;
+    }).join('');
+  }
+  leaders() {
+    if(this.selectedLeague==='all')return `<div class="empty">${this.t('selectLeague')}</div>`;
+    const feed=this.leaderCache[this.selectedLeague];
+    if(!feed || feed.loading)return `<div class="empty">${this.t('waiting')}</div>`;
+    if(!feed.leaders?.length)return `<div class="empty">${this.t('dataUnavailable')}</div>`;
+    return `<div class="leader-list">${feed.leaders.map(item=>`<p><small class="muted">${esc(item.category)}</small><br><strong>${esc(item.player)}</strong><br><span class="minor">${esc(item.team)}</span><b style="float:right;color:#ffcf53">${esc(item.value)}</b></p>`).join('')}</div>`;
+  }
+  predictionBoard() {
+    if(!this.data.admin)return `<div class="notice">${this.t('adminOnly')}</div>`;
+    if(this.competitions===null)return `<div class="empty">${this.t('waiting')}</div>`;
+    if(!this.competitions.length)return `<div class="notice">${this.t('noCompetition')}</div>`;
+    return this.competitions.map(comp=>{
+      const rows=comp.standings || [];
+      return this.card(`${comp.kind==='lms'?'🏆 LMS':'🎯 Acca'} · ${comp.title}`,
+        `<div class="stats-grid"><div class="stats-tile"><span>${this.t('league')}</span><b>${esc(comp.league)}</b></div><div class="stats-tile"><span>${this.t('rounds')}</span><b>${Object.keys(comp.rounds||{}).length}</b></div><div class="stats-tile"><span>${this.t('players')}</span><b>${rows.length}</b></div><div class="stats-tile"><span>${this.t('fund')}</span><b>${esc(comp.prize_fund??0)}</b></div></div>
+        <div class="tablewrap"><table><thead><tr><th>${this.t('players')}</th><th>${this.t('score')}</th><th>${this.t('active')}</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(comp.kind==='lms'?r.survived_rounds:r.points)}</td><td>${r.active?'✓':'–'}</td></tr>`).join('')}</tbody></table></div>`);
+    }).join('');
+  }
+  modalMarkup() {
     if(!this.modal)return '';
     const m=this.modal;
-    const events=(m.events||[]).map(ev=>`<p><b>${esc(ev.minute||'⚽')}</b> ${esc(ev.description)} <small>${esc(ev.team||'')}</small></p>`).join('');
-    const stats=(m.teams||[]).map(team=>`<div class="detail-column"><h4>${esc(team.name)}</h4>${(team.statistics||[]).map(st=>`<p><span>${esc(st.label)}</span><b>${esc(st.value)}</b></p>`).join('')}</div>`).join('');
-    return `<div class="modal-mask" data-close><div class="modal-body" role="dialog" aria-modal="true" aria-label="${this.t('details')}"><div class="modal-head"><h3>⚽ ${this.t('details')}</h3><button class="modal-close" data-close>${this.t('close')} ×</button></div>${m.loading?`<p>${this.t('loadingDetails')}</p>`:m.error?`<div class="empty">${this.t('noDetails')}</div>`:`<div class="feedinfo">${esc(m.venue||'')} ${m.attendance?`· ${this.t('attendance')}: ${esc(m.attendance)}`:''}</div><h4>${this.t('events')}</h4>${events?`<div class="timeline">${events}</div>`:`<div class="muted">${this.t('noDetails')}</div>`}${stats?`<h4>${this.t('statistics')}</h4><div class="detail-columns">${stats}</div>`:''}`}</div></div>`;
+    let contents='';
+    if(m.loading)contents=`<p>${this.t('loadingDetails')}</p>`;
+    else if(m.error)contents=`<div class="empty">${this.t('noDetails')}</div>`;
+    else if(m.type==='club'){
+      contents=`<h3>${esc(m.name||'')}</h3><p>${esc(m.location||'')} · ${esc(m.abbreviation||'')}</p><h4>${this.t('squad')}</h4><div class="squad">${(m.roster||[]).map(p=>`<p><b>${esc(p.number||'–')}</b> ${esc(p.name)} <small class="muted">${esc(p.position)}</small></p>`).join('')||this.t('dataUnavailable')}</div>`;
+    } else {
+      const events=(m.events||[]).map(e=>`<p><b>${esc(e.minute||'⚽')}</b> ${esc(e.description)} <small>${esc(e.team||'')}</small></p>`).join('');
+      const stats=(m.teams||[]).map(team=>`<div class="detail-column"><h4>${esc(team.name)}</h4>${(team.statistics||[]).map(st=>`<p><span>${esc(st.label)}</span><b>${esc(st.value)}</b></p>`).join('')}</div>`).join('');
+      const officials=(m.officials||[]).map(o=>esc(o.name)).join(', ');
+      const lineups=(m.lineups||[]).map(g=>`<div><h4>${esc(g.team)}</h4><div class="squad">${(g.players||[]).map(p=>`<p>${p.starter?'●':'○'} ${esc(p.number||'')} ${esc(p.name)} <small>${esc(p.position)}</small></p>`).join('')}</div></div>`).join('');
+      contents=`<div class="feedinfo">${esc(m.venue||'')} ${m.attendance?`· ${this.t('attendance')}: ${esc(m.attendance)}`:''}</div>${officials?`<p>${this.t('official')}: ${officials}</p>`:''}${m.weather?`<p>${this.t('weather')}: ${esc(m.weather)}</p>`:''}<h4>${this.t('events')}</h4>${events?`<div class="timeline">${events}</div>`:`<div class="muted">${this.t('noDetails')}</div>`}${stats?`<h4>${this.t('statistics')}</h4><div class="detail-columns">${stats}</div>`:''}${lineups?`<h4>${this.t('squad')}</h4>${lineups}`:''}`;
+    }
+    return `<div class="modal-mask" data-close><div class="modal-body" role="dialog" aria-modal="true"><div class="modal-head"><h3>⚽ ${this.t('details')}</h3><button class="modal-close" data-close>${this.t('close')} ×</button></div>${contents}</div></div>`;
   }
-  render(){const d=this.data;const fixtures=[...(d.fixtures||[])].sort((a,b)=>ts(a.kickoff)-ts(b.kickoff));const live=fixtures.filter(f=>f.state==='in');const future=fixtures.filter(f=>f.state==='pre');const results=fixtures.filter(f=>f.state==='post').reverse();const news=d.news||[];const standings=d.standings||[];let body='';if(this.tab==='overview'){body=this.card('⚽ '+this.t('ongoing'),this.matches(live.slice(0,4)),'live')+this.card('🗓 '+this.t('next'),this.matches(future.slice(0,4)),'fixtures')+this.card('📰 '+this.t('latest'),this.news(news.slice(0,3)),'news');}else if(this.tab==='live'){body=this.card('⚡ '+this.t('live'),this.matches(live));}else if(this.tab==='fixtures'){body=this.card('🗓 '+this.t('fixtures'),this.matches(future));}else if(this.tab==='results'){body=this.card('🏁 '+this.t('results'),this.matches(results));}else if(this.tab==='table'){body=this.card('🏆 '+this.t('table'),this.standings(standings));}else if(this.tab==='news'){body=this.card('📰 '+this.t('news'),this.news(news));}else{body=this.card('⚙️ '+this.t('settings'),`<div class="notice">${this.t('configure')} <strong>${this.t('integrations')} → Football News → Configure</strong>.<p>${this.t('note')}</p></div>`);}
-    const tabs=[['overview','⌂'],['live','⚡'],['fixtures','🗓'],['results','🏁'],['table','🏆'],['news','📰'],['settings','⚙️']];
-    this.shadowRoot.innerHTML=`<style>${STYLE}</style><div class="app"><div class="shell"><aside class="aside"><div class="brand"><img alt="${this.t('logo')}" src="/football_news/icon.png"><span>Football <b>News</b></span></div><nav class="nav">${tabs.map(([key,icon])=>`<button class="${this.tab===key?'active':''}" data-tab="${key}"><span class="emoji">${icon}</span>${this.t(key)}</button>`).join('')}</nav><div class="source-note">${this.t('note')}</div></aside><main class="main"><header class="top"><div><span class="eyebrow">FOOTBALL NEWS / HOME ASSISTANT</span><h1>${this.t('dashboard')}</h1><p class="muted">${this.t('subtitle')}</p></div><div class="actions"><button class="refresh" data-refresh>↻ ${this.t('refresh')}</button></div></header><section class="hero"><div><span class="league-pill"><span class="dot"></span>${esc(d.league)}</span><h2>${this.t('matches')} · ${this.t('data')}</h2><div class="muted">${this.t('browser')}</div></div><img class="hero-icon" src="/football_news/icon.png" alt=""></section><div class="metrics"><div class="metric"><span class="deco">⚡</span><span class="num">${live.length}</span><span class="key">${this.t('live')}</span></div><div class="metric"><span class="deco">🗓</span><span class="num">${future.length}</span><span class="key">${this.t('fixtures')}</span></div><div class="metric"><span class="deco">📰</span><span class="num">${news.length}</span><span class="key">${this.t('news')}</span></div></div>${!this._last?`<div class="warn">${this.t('waiting')}</div>`:''}${(d.errors||[]).length?`<div class="warn">${this.t('error')}. ${this.t('stale')}</div>`:''}${body}<div class="feedinfo"><span class="dot"></span>${this.t('source')}: ESPN · ${this.t('updated')}: ${esc(d.updated_at?.fixtures?this.date(d.updated_at.fixtures):'—')}</div><div class="footer">${this.t('note')}</div></main></div>${this.modalMarkup()}</div>`;
+  render() {
+    const d=this.data;
+    const combined=this.merged();
+    const fixtures=combined.fixtures;
+    const live=fixtures.filter(f=>f.state==='in');
+    const future=fixtures.filter(f=>f.state==='pre');
+    const results=fixtures.filter(f=>f.state==='post').reverse();
+    const news=combined.news;
+    let body='';
+    switch(this.tab){
+      case 'overview': body=this.card('⚡ '+this.t('ongoing'),this.matches(live.slice(0,8)),'live')+this.card('⭐ '+this.t('clubs'),this.matches(combined.favouriteFixtures.filter(f=>f.state!=='post').slice(0,4)),'clubs')+this.card('🗓 '+this.t('next'),this.matches(future.slice(0,6)),'fixtures')+this.card('📰 '+this.t('latest'),this.news(news.slice(0,4)),'news');break;
+      case 'live': body=this.card('⚡ '+this.t('live'),this.matches(live));break;
+      case 'fixtures': {
+        const monthly=this.monthData && this.monthData.league===this.selectedLeague?this.monthData:null;
+        const monthlyPanel=this.selectedLeague==='all'?`<p class="muted">${this.t('monthSelected')}</p>`:
+          `<div class="actions" style="margin-bottom:16px"><input data-month-input type="month" value="${esc(this.monthValue)}" style="color:#fbe8d2;background:#351824;border:1px solid #a85157;padding:9px;border-radius:8px"><button class="refresh" data-month-fetch>${this.t('monthLoad')}</button></div>${monthly?.loading?`<div class="empty">${this.t('waiting')}</div>`:monthly?.error?`<div class="warn">${this.t('dataUnavailable')}</div>`:monthly?.fixtures?this.matches(monthly.fixtures.map(f=>({...f,league:this.selectedLeague,league_name:this.leagues().find(l=>l.league_code===this.selectedLeague)?.name}))):''}`;
+        body=this.card('🗓 '+this.t('fixtures'),this.matches(future))+this.card('📆 '+this.t('monthTitle'),monthlyPanel);break;
+      }
+      case 'results': body=this.card('🏁 '+this.t('results'),this.matches(results));break;
+      case 'table': body=this.card('🏆 '+this.t('table'),this.standings(combined.standings));break;
+      case 'leaders': body=this.card('🥇 '+this.t('leaders'),this.leaders());break;
+      case 'clubs': body=this.card('⭐ '+this.t('clubs'),this.clubs(fixtures,combined.standings));break;
+      case 'competitions': body=this.predictionBoard()+this.card('⚙️ '+this.t('settings'),`<div class="notice">${this.t('instructions')}</div>`);break;
+      case 'news': body=this.card('📰 '+this.t('news'),this.news(news));break;
+      default: body=this.card('⚙️ '+this.t('settings'),`<div class="notice">${this.t('configure')} <b>${this.t('integrations')} → Football News → Configure</b>.<p>${this.t('alertHint')}</p><p>${this.t('note')}</p></div>`);
+    }
+    const tabs=[['overview','⌂'],['live','⚡'],['fixtures','🗓'],['results','🏁'],['table','🏆'],['leaders','🥇'],['clubs','⭐'],['competitions','🎯'],['news','📰'],['settings','⚙️']];
+    const leagues=this.leagues();
+    const leagueChips=`<div class="league-bar" aria-label="${this.t('league')}"><button class="league-chip ${this.selectedLeague==='all'?'selected':''}" data-league="all">🌐 ${this.t('allLeagues')}</button>${leagues.map(l=>`<button class="league-chip ${this.selectedLeague===l.league_code?'selected':''}" data-league="${esc(l.league_code)}">${esc(l.name)}</button>`).join('')}</div>`;
+    const errors=leagues.flatMap(l=>l.errors||[]);
+    this.shadowRoot.innerHTML=`<style>${STYLE}${MORE_STYLE}</style><div class="app"><div class="shell"><aside class="aside"><div class="brand"><img alt="${this.t('logo')}" src="/football_news/icon.png"><span>Football <b>News</b></span></div><nav class="nav">${tabs.map(([key,icon])=>`<button class="${this.tab===key?'active':''}" data-tab="${key}"><span class="emoji">${icon}</span>${this.t(key)}</button>`).join('')}</nav><div class="source-note">${this.t('note')}</div></aside><main class="main"><header class="top"><div><span class="eyebrow">FOOTBALL NEWS / HOME ASSISTANT</span><h1>${this.t('dashboard')}</h1><p class="muted">${this.t('sources')}</p></div><div class="actions"><button class="refresh" data-refresh>↻ ${this.t('refresh')}</button></div></header>${leagueChips}<section class="hero"><div><span class="league-pill"><span class="dot"></span>${esc(this.selectedLeague==='all'?this.t('allLeagues'):(leagues.find(l=>l.league_code===this.selectedLeague)?.name||this.selectedLeague))}</span><h2>⚽ ${this.t('matches')} · ${this.t('data')}</h2><div class="muted">${leagues.length} ${this.t('league')} · ${this.t('browser')}</div></div><img class="hero-icon" src="/football_news/icon.png" alt=""></section><div class="metrics"><div class="metric"><span class="deco">⚡</span><span class="num">${live.length}</span><span class="key">${this.t('live')}</span></div><div class="metric"><span class="deco">🗓</span><span class="num">${future.length}</span><span class="key">${this.t('fixtures')}</span></div><div class="metric"><span class="deco">📰</span><span class="num">${news.length}</span><span class="key">${this.t('news')}</span></div></div>${!this._last?`<div class="warn">${this.t('waiting')}</div>`:''}${errors.length?`<div class="warn">${this.t('error')}. ${this.t('stale')}</div>`:''}${body}<div class="feedinfo"><span class="dot"></span>${this.t('source')}: ESPN · ${this.t('updated')}: ${esc((leagues[0]?.updated_at?.fixtures)?this.date(leagues[0].updated_at.fixtures):'–')}</div><div class="footer">${this.t('note')}</div></main></div>${this.modalMarkup()}</div>`;
   }
 }
-if (!customElements.get('football-news-panel'))customElements.define('football-news-panel',FootballNewsPanel);
+if(!customElements.get('football-news-panel')) customElements.define('football-news-panel',FootballNewsPanel);

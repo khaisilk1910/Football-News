@@ -6,7 +6,7 @@ Bản đầu có `zip_release: true` trong `hacs.json`. Marketplace buộc phả
 `football_news.zip` ở mỗi GitHub Release. Release `v2026.11.11.1` không có asset
 đúng tên tại đường dẫn được log ghi lại, nên cài đặt thất bại trước bước cài Python.
 
-Từ **v2026.11.11.2**, `hacs.json` bỏ `zip_release`/`filename`. Marketplace đọc
+Từ **v2026.11.11.3**, `hacs.json` bỏ `zip_release`/`filename`. Marketplace đọc
 trực tiếp `custom_components/football_news` từ repository/tag. File ZIP tiếp tục
 được tạo đính kèm GitHub Release để tải về **cài thủ công**, không còn là điều kiện
 bắt buộc cho cài đặt Marketplace.
@@ -29,7 +29,7 @@ Trong bản clone đã chứa mã nguồn mới, chạy:
 python scripts/check_marketplace.py
 python -m unittest discover -s tests -p 'test_*.py' -v
 git add -A
-git commit -m "Fix Marketplace install for Football News 2026.11.11.2"
+git commit -m "Fix Marketplace install for Football News 2026.11.11.3"
 git push origin main
 ```
 
@@ -41,21 +41,21 @@ nội dung vào clone và cả `.github/` lẫn `.gitignore` đã được đưa
 **Sau khi** commit đã có trên nhánh `main` và CI thành công:
 
 ```bash
-git tag -a v2026.11.11.2 -m "Football News v2026.11.11.2"
-git push origin v2026.11.11.2
+git tag -a v2026.11.11.3 -m "Football News v2026.11.11.3"
+git push origin v2026.11.11.3
 ```
 
 Tag **phải trỏ đến commit đã có mã mới**, chứa:
 
-- `custom_components/football_news/manifest.json` có `"version": "2026.11.11.2"`
-- `custom_components/football_news/const.py` có `VERSION = "2026.11.11.2"`
+- `custom_components/football_news/manifest.json` có `"version": "2026.11.11.3"`
+- `custom_components/football_news/const.py` có `VERSION = "2026.11.11.3"`
 - `hacs.json` **không có** `zip_release: true` hoặc `filename`.
 - `.github/workflows/release.yml` được commit đầy đủ.
 
 GitHub Actions `Release Football News` sẽ kiểm tra tag, chạy unit tests,
 đóng gói `football_news.zip` và tạo Release. Nếu đã có Release nhưng thiếu file
 ZIP, vào **Actions → Release Football News → Run workflow**, nhập
-`v2026.11.11.2`. Workflow sẽ upload lại asset đúng tên. Quyền `GITHUB_TOKEN`
+`v2026.11.11.3`. Workflow sẽ upload lại asset đúng tên. Quyền `GITHUB_TOKEN`
 phải cho phép `contents: write` để tạo/update Release.
 
 Kiểm tra tại: https://github.com/khaisilk1910/Football-News/releases
@@ -70,7 +70,7 @@ Kiểm tra tại: https://github.com/khaisilk1910/Football-News/releases
 3. Làm mới trang/repository để lấy phiên bản mới. Nếu vẫn thấy tag cũ, thử đóng
    và mở lại Marketplace; custom repository được đồng bộ theo chu kỳ, nên có thể
    chưa xuất hiện ngay.
-4. Chọn phiên bản `v2026.11.11.2`, **Install**.
+4. Chọn phiên bản `v2026.11.11.3`, **Install**.
 5. Mở **Settings → Devices & services → Add integration → Football News**.
 
 Nếu giao diện vẫn cố tải `releases/download/v2026.11.11.1/football_news.zip`,

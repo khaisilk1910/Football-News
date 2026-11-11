@@ -5,10 +5,14 @@
       "user": {
         "title": "Thiết lập Football News",
         "description": "Chọn giải bóng đá cần theo dõi. Không yêu cầu API key. Dữ liệu được tải sau khi Home Assistant khởi động xong.",
-        "data": {"league": "Giải đấu"}
+        "data": {
+          "league": "Giải đấu"
+        }
       }
     },
-    "abort": {"already_configured": "Giải đấu này đã được thiết lập."}
+    "abort": {
+      "already_configured": "Giải đấu này đã được thiết lập."
+    }
   },
   "options": {
     "step": {
@@ -26,25 +30,122 @@
           "kickoff_alerts": "Thông báo bắt đầu trận",
           "result_alerts": "Thông báo kết quả chung cuộc",
           "news_alerts": "Thông báo tin tức mới",
-          "reminder_minutes": "Nhắc trước trận (phút)"
+          "reminder_minutes": "Nhắc trước trận (phút)",
+          "goal_alerts": "Thông báo khi thay đổi tỷ số / có bàn thắng"
         }
       }
     },
-    "error": {"zalo_missing_fields": "Cần nhập tài khoản gửi và ID người nhận trước khi bật Zalo."}
+    "error": {
+      "zalo_missing_fields": "Cần nhập tài khoản gửi và ID người nhận trước khi bật Zalo."
+    }
   },
   "entity": {
     "sensor": {
-      "live_matches": {"name": "Số trận trực tiếp"},
-      "upcoming_matches": {"name": "Số trận sắp diễn ra"},
-      "news_articles": {"name": "Số tin tức"},
-      "next_kickoff": {"name": "Lịch trận tiếp theo"},
-      "last_update": {"name": "Lần cập nhật dữ liệu"}
+      "live_matches": {
+        "name": "Số trận trực tiếp"
+      },
+      "upcoming_matches": {
+        "name": "Số trận sắp diễn ra"
+      },
+      "news_articles": {
+        "name": "Số tin tức"
+      },
+      "next_kickoff": {
+        "name": "Lịch trận tiếp theo"
+      },
+      "last_update": {
+        "name": "Lần cập nhật dữ liệu"
+      },
+      "favorite_clubs": {
+        "name": "Số câu lạc bộ yêu thích"
+      }
     },
-    "binary_sensor": {"source_connected": {"name": "Nguồn dữ liệu sẵn sàng"}}
+    "binary_sensor": {
+      "source_connected": {
+        "name": "Nguồn dữ liệu sẵn sàng"
+      }
+    }
   },
   "services": {
-    "refresh": {"name": "Làm mới dữ liệu", "description": "Yêu cầu cập nhật lịch thi đấu, tin tức và bảng xếp hạng.", "fields": {"entry_id": {"name": "ID cấu hình", "description": "Không bắt buộc; mặc định dùng giải đầu tiên."}}},
-    "test_zalo": {"name": "Gửi tin thử Zalo", "description": "Thử gửi tin được định dạng bằng Zalo Bot đã cài đặt.", "fields": {"entry_id": {"name": "ID cấu hình", "description": "Không bắt buộc; mặc định dùng giải đầu tiên."}}},
-    "match_details": {"name": "Xem chi tiết trận", "description": "Tải thông tin trận bóng theo ID ESPN; trả kết quả cho automation.", "fields": {"entry_id": {"name": "ID cấu hình", "description": "Không bắt buộc; mặc định dùng giải đầu tiên."}, "event_id": {"name": "Mã trận đấu ESPN", "description": "ID dạng số lấy từ lịch thi đấu Football News."}}}
+    "refresh": {
+      "name": "Làm mới dữ liệu",
+      "description": "Yêu cầu cập nhật lịch thi đấu, tin tức và bảng xếp hạng.",
+      "fields": {
+        "entry_id": {
+          "name": "ID cấu hình",
+          "description": "Không bắt buộc; mặc định dùng giải đầu tiên."
+        }
+      }
+    },
+    "test_zalo": {
+      "name": "Gửi tin thử Zalo",
+      "description": "Thử gửi tin được định dạng bằng Zalo Bot đã cài đặt.",
+      "fields": {
+        "entry_id": {
+          "name": "ID cấu hình",
+          "description": "Không bắt buộc; mặc định dùng giải đầu tiên."
+        }
+      }
+    },
+    "match_details": {
+      "name": "Xem chi tiết trận",
+      "description": "Tải thông tin trận bóng theo ID ESPN; trả kết quả cho automation.",
+      "fields": {
+        "entry_id": {
+          "name": "ID cấu hình",
+          "description": "Không bắt buộc; mặc định dùng giải đầu tiên."
+        },
+        "event_id": {
+          "name": "Mã trận đấu ESPN",
+          "description": "ID dạng số lấy từ lịch thi đấu Football News."
+        }
+      }
+    },
+    "manage_competition": {
+      "name": "Quản lý giải dự đoán",
+      "description": "Tạo giải LMS/Acca, thêm người chơi, tạo vòng, gửi lựa chọn, ghi nhận thanh toán và mua lại.",
+      "fields": {
+        "operation": {
+          "name": "Thao tác"
+        },
+        "competition_id": {
+          "name": "Mã giải"
+        },
+        "kind": {
+          "name": "Loại giải"
+        },
+        "title": {
+          "name": "Tên giải"
+        },
+        "league": {
+          "name": "Giải bóng đá"
+        },
+        "player_id": {
+          "name": "Mã người chơi"
+        },
+        "player_name": {
+          "name": "Tên người chơi"
+        },
+        "round_id": {
+          "name": "Mã vòng"
+        },
+        "deadline": {
+          "name": "Hạn chót ISO8601"
+        },
+        "fixture_ids": {
+          "name": "Danh sách trận ESPN"
+        },
+        "picks": {
+          "name": "Lựa chọn"
+        },
+        "amount": {
+          "name": "Số tiền đã thanh toán"
+        }
+      }
+    },
+    "get_competitions": {
+      "name": "Danh sách giải dự đoán",
+      "description": "Xem bảng xếp hạng giải dự đoán; lựa chọn trước hạn chót được ẩn."
+    }
   }
 }

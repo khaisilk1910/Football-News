@@ -1,27 +1,102 @@
 refresh:
   name: Làm mới dữ liệu
-  description: Yêu cầu cập nhật lịch thi đấu, tin tức và bảng xếp hạng.
+  description: Yêu cầu cập nhật lịch thi đấu, kết quả, tin tức và bảng xếp hạng.
   fields:
     entry_id:
       name: ID cấu hình
-      description: Không bắt buộc; mặc định dùng giải đầu tiên.
+      description: Không bắt buộc, mặc định dùng giải đầu tiên.
+      selector:
+        text:
 test_zalo:
   name: Gửi tin thử Zalo
-  description: Gửi tin mẫu qua tích hợp Zalo Bot đang hoạt động.
+  description: Gửi tin mẫu qua Zalo Bot đang hoạt động (cần cấu hình và bật thông báo).
   fields:
     entry_id:
       name: ID cấu hình
-      description: Không bắt buộc; mặc định dùng giải đầu tiên.
+      description: Không bắt buộc, mặc định dùng giải đầu tiên.
+      selector:
+        text:
 match_details:
   name: Lấy chi tiết trận đấu
-  description: Trả dữ liệu chi tiết của trận bóng từ ESPN cho automation.
+  description: Trả dữ liệu chi tiết trận đấu cho automation, chỉ khi được gọi.
   fields:
     entry_id:
       name: ID cấu hình
-      description: Không bắt buộc; mặc định dùng giải đầu tiên.
+      description: Không bắt buộc, mặc định dùng giải đầu tiên.
+      selector:
+        text:
     event_id:
       name: ID trận đấu ESPN
-      description: ID trận lấy từ Football News; chỉ cho phép chữ số.
+      description: ID trận từ Football News, chỉ được dùng chữ số.
       required: true
       selector:
         text:
+manage_competition:
+  name: Quản lý LMS / Acca
+  description: Quản trị một giải dự đoán; chỉ quản trị viên Home Assistant (hoặc automation hệ thống) được phép sử dụng. Có response_variable.
+  fields:
+    operation:
+      name: Thao tác
+      required: true
+      selector:
+        select:
+          options:
+            - create
+            - add_player
+            - round
+            - pick
+            - payment
+            - buyback
+    competition_id:
+      name: Mã giải
+      selector:
+        text:
+    kind:
+      name: Loại giải (khi tạo)
+      selector:
+        select:
+          options:
+            - lms
+            - acca
+    title:
+      name: Tên giải
+      selector:
+        text:
+    league:
+      name: Mã giải bóng đá
+      selector:
+        text:
+    player_id:
+      name: Mã người chơi
+      selector:
+        text:
+    player_name:
+      name: Tên người chơi
+      selector:
+        text:
+    round_id:
+      name: Mã vòng
+      selector:
+        text:
+    deadline:
+      name: Hạn chót ISO8601 có múi giờ
+      selector:
+        text:
+    fixture_ids:
+      name: Danh sách ID trận ở vòng
+      selector:
+        object:
+    picks:
+      name: Danh sách lựa chọn
+      selector:
+        object:
+    amount:
+      name: Tổng số tiền đã thanh toán
+      selector:
+        number:
+          min: 0
+          max: 1000000
+          mode: box
+get_competitions:
+  name: Danh sách LMS / Acca
+  description: Trả bảng xếp hạng và thông tin vòng của các giải dự đoán (ẩn lựa chọn trước hạn chót).

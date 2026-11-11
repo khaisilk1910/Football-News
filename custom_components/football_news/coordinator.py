@@ -25,6 +25,7 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.entry = entry
         self.provider = provider
         self.notifier = None
+        self.predictions = None
         self._dataset_updates: dict[str, datetime] = {}
         self._data: dict[str, Any] = {"fixtures": [], "standings": [], "news": []}
         self._notification_lock = asyncio.Lock()
@@ -63,4 +64,6 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.notifier is not None:
             # Do not block entity updates or Home Assistant startup on Zalo I/O.
             self.hass.async_create_task(self.notifier.process(result))
+        if self.predictions is not None:
+            self.hass.async_create_task(self.predictions.auto_settle(result["fixtures"]))
         return result

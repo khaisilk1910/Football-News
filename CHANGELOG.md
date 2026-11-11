@@ -1,27 +1,22 @@
-# Changelog — Football News
+# Lịch sử cập nhật Football News
 
-## 2026.11.11.2 — 2026-11-11
+## 2026.11.11.3 — Mở rộng chức năng độc lập
 
-- Sửa cài đặt Marketplace 404: bỏ yêu cầu `zip_release`, dùng cấu trúc nguồn chuẩn `custom_components/football_news`.
-- Vẫn tạo `football_news.zip` đính kèm GitHub Release để tải và cài thủ công.
-- Tự kiểm tra đồng bộ phiên bản Git tag, `manifest.json`, `const.py` và cấu trúc repository.
-- Bổ sung workflow phát hành hỗ trợ chạy lại thủ công và tài liệu RELEASE.md.
+- Dashboard đa giải đấu đã cấu hình: lịch, trực tiếp, kết quả, bảng xếp hạng, tin, lịch theo tháng.
+- Danh mục 25 mã giải/cúp, cảnh báo rõ giới hạn dữ liệu từ ESPN.
+- My Club: tối đa 5 câu lạc bộ, chọn qua ngôi sao, xem danh sách cầu thủ theo yêu cầu.
+- Chi tiết trận đọc thêm referee, weather và line-up khi nguồn có thông tin.
+- Dữ liệu đội bóng và danh sách cầu thủ dẫn đầu chỉ tải khi người dùng yêu cầu.
+- Mô-đun riêng LMS/Acca: tạo giải, người chơi, vòng, lựa chọn, xác minh deadline, chấm kết quả, bảng điểm, mua lại LMS và ghi nhận thanh toán.
+- Zalo: thêm tùy chọn thông báo bàn thắng/thay đổi tỷ số, lọc trận được đánh dấu, lưu lịch sử để giảm gửi trùng.
+- Thêm bảng đối chiếu tính năng và giới hạn tại `FEATURES.md`, không sao chép tài sản Football Hub.
+- 19 bài kiểm thử đơn vị trên lõi dữ liệu, Zalo và giải dự đoán.
 
+## 2026.11.11.2 — Cài đặt Marketplace từ mã nguồn
 
-## 1.0.1 — 2026-11-11
+- Không bắt buộc GitHub Release ZIP khi cài từ Home Assistant Marketplace.
+- Đồng bộ phiên bản ở manifest/const, tăng kiểm tra CI và hướng dẫn phát hành.
 
-- Thiết kế lại icon bóng đá, biểu tượng Home Assistant, báo NEWS với tông đỏ–vàng.
-- Thay bảng màu giao diện Football News sang đỏ đô, đỏ và vàng kim.
-- Bổ sung giải thích vị trí file ẩn `.gitignore` và sự khác biệt giữa ZIP repository/ZIP phát hành.
-- Cập nhật `manifest.json` và `const.py` cùng phiên bản 1.0.1.
+## 2026.11.11.1 — README tiếng Việt và nhận diện đỏ-vàng
 
-## 1.0.0 — 2026-11-11
-
-- Ra mắt tích hợp Football News **được viết độc lập** (domain `football_news`).
-- Dashboard navy/cyan và icon mới, giao diện tiếng Việt và tiếng Anh.
-- Lịch thi đấu, tỷ số trực tiếp, kết quả, bảng xếp hạng và tin tức qua nguồn ESPN công khai.
-- Zalo Bot: nhắc lịch, bắt đầu trận, kết quả, tin mới, tin thử; rich text theo README Zalo.
-- Tải dữ liệu nền sau HA startup, giới hạn polling và cache theo loại dữ liệu.
-- Bổ sung diagnostics, unit tests, workflow validate, phát hành ZIP cho Marketplace/HACS.
-
-**Giới hạn:** Bản 1.0.0 chưa tái tạo các tính năng nâng cao của Football Hub, chưa được xác nhận tương thích qua chạy thử HA/Zalo thực tế.
+- Cài nhanh Marketplace, icon Football News, cải thiện giao diện và tài liệu tiếng Việt.

@@ -9,7 +9,7 @@ from typing import Any
 
 import aiohttp
 from .const import API_ROOT
-from .models import normalize_fixture, normalize_standings, normalize_news
+from .models import normalize_fixture, normalize_standings, normalize_news, normalize_club, normalize_roster, normalize_leaders
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,3 +96,42 @@ class FootballProvider:
         if not event_id.isascii() or not event_id.isdigit() or len(event_id) > 24:
             raise ProviderError("Invalid event identifier")
         return await self._json(f"site/v2/sports/soccer/{self.league}/summary", {"event": event_id})
+
+    async def club(self, team_id: str) -> dict:
+        if not team_id.isascii() or not team_id.isdigit() or len(team_id) > 16:
+            raise ProviderError("Invalid team identifier")
+        async def fetch():
+            return normalize_club(await self._json(f"site/v2/sports/soccer/{self.league}/teams/{team_id}"), self.league)
+        return await self.cached(f"club:{team_id}", 24 * 3600, fetch)
+
+    async def roster(self, team_id: str) -> list[dict]:
+        if not team_id.isascii() or not team_id.isdigit() or len(team_id) > 16:
+            raise ProviderError("Invalid team identifier")
+        async def fetch():
+            return normalize_roster(await self._json(f"site/v2/sports/soccer/{self.league}/teams/{team_id}/roster"))
+        return await self.cached(f"roster:{team_id}", 12 * 3600, fetch)
+
+    async def leaders(self) -> list[dict]:
+        async def fetch():
+            return normalize_leaders(await self._json(f"v2/sports/soccer/{self.league}/leaders"))
+        return await self.cached("leaders", 6 * 3600, fetch)
+
+    async def fixtures_month(self, month: str) -> list[dict]:
+        """Fetch a chosen calendar month only on request; never during HA startup."""
+        import calendar
+        if len(month) != 7 or month[4] != "-" or not (month[:4] + month[5:]).isascii() or not (month[:4] + month[5:]).isdigit():
+            raise ProviderError("Month must have the YYYY-MM format")
+        year, number = int(month[:4]), int(month[5:])
+        if not (2020 <= year <= 2100 and 1 <= number <= 12):
+            raise ProviderError("Month out of supported range")
+        last = calendar.monthrange(year, number)[1]
+        start = f"{year:04d}{number:02d}01"
+        end = f"{year:04d}{number:02d}{last:02d}"
+        async def fetch():
+            payload = await self._json(f"site/v2/sports/soccer/{self.league}/scoreboard", {"dates": f"{start}-{end}", "limit": 500})
+            events = payload.get("events")
+            if not isinstance(events, list):
+                raise ProviderError("Monthly scoreboard has no events array")
+            return [entry for e in events if isinstance(e, dict)
+                    if (entry := normalize_fixture(e, self.league)) is not None]
+        return await self.cached(f"month:{month}", 3600, fetch)

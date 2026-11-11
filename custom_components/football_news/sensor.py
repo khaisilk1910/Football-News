@@ -14,6 +14,7 @@ DESCRIPTIONS = (
     SensorEntityDescription(key="live_matches", translation_key="live_matches", icon="mdi:soccer-field"),
     SensorEntityDescription(key="upcoming_matches", translation_key="upcoming_matches", icon="mdi:calendar-clock"),
     SensorEntityDescription(key="news_articles", translation_key="news_articles", icon="mdi:newspaper-variant-multiple"),
+    SensorEntityDescription(key="favorite_clubs", translation_key="favorite_clubs", icon="mdi:star-circle"),
     SensorEntityDescription(key="next_kickoff", translation_key="next_kickoff", icon="mdi:calendar-start", device_class=SensorDeviceClass.TIMESTAMP),
     SensorEntityDescription(key="last_update", translation_key="last_update", icon="mdi:clock-check-outline", device_class=SensorDeviceClass.TIMESTAMP, entity_category=EntityCategory.DIAGNOSTIC),
 )
@@ -40,9 +41,18 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
             model="Football feed", sw_version=VERSION,
         )
 
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        if self.entity_description.key == "favorite_clubs":
+            self.async_on_remove(self.hass.bus.async_listen(
+                f"{DOMAIN}_preferences_updated", lambda event: self.async_write_ha_state()
+            ))
+
     @property
     def available(self):
         # Unknown on startup rather than pretending there are zero matches.
+        if self.entity_description.key == "favorite_clubs":
+            return self.hass.data[DOMAIN]["preferences"]._loaded
         data = self.coordinator.data or {}
         needed = "news" if self.entity_description.key == "news_articles" else "fixtures"
         return (self.coordinator.last_update_success
@@ -59,6 +69,8 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
             return sum(f.get("state") == "pre" for f in fixtures)
         if self.entity_description.key == "news_articles":
             return len(data.get("news", []))
+        if self.entity_description.key == "favorite_clubs":
+            return len(self.hass.data[DOMAIN]["preferences"]._data["clubs"])
         if self.entity_description.key == "next_kickoff":
             future = []
             for fixture in fixtures:
@@ -87,4 +99,8 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
             ][:10], "source": data.get("source", "ESPN")}
         if self.entity_description.key == "last_update":
             return {"updated_at": data.get("updated_at", {}), "errors": data.get("errors", [])}
+        if self.entity_description.key == "favorite_clubs":
+            clubs = self.hass.data[DOMAIN]["preferences"]._data["clubs"]
+            return {"clubs": [{"name": x.get("name"), "league": x.get("league")}
+                              for x in clubs[:5]]}
         return None

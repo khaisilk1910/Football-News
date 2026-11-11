@@ -14,7 +14,7 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/khaisilk1910/Football-News/issues",
   "requirements": [],
-  "version": "2026.11.11.2",
+  "version": "2026.11.11.3",
   "categories": [
     "news_social_media",
     "messaging_notifications"

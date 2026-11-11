@@ -51,6 +51,14 @@ def build_message(kind: str, item: dict, league_name: str, tz) -> str:
                 f"{match}\n🏆 {league}\n🗓 {_time(item.get('kickoff', ''), tz)}\n"
                 f"🏟 {_safe(item.get('venue') or 'Đang cập nhật')}\n"
                 "{small}Lịch có thể thay đổi · Giờ theo múi giờ Home Assistant{/small}")
+    if kind == "goal":
+        h = item.get("home", {}).get("score")
+        a = item.get("away", {}).get("score")
+        if type(h) is not int or type(a) is not int:
+            raise ValueError("Cannot announce a goal without a verified score")
+        return ("{big}{orange}**⚽ FOOTBALL NEWS · BÀN THẮNG / CẬP NHẬT TỶ SỐ**{/orange}{/big}\n"
+                f"{match}\n{{big}}**{h} - {a}**{{/big}}\n🏆 {league}\n"
+                "{small}Tỷ số mới từ ESPN · Có thể bao gồm điều chỉnh kết quả{/small}")
     if kind == "kickoff":
         return ("{big}{green}**⚽ FOOTBALL NEWS · BẮT ĐẦU**{/green}{/big}\n"
                 f"{match}\n🏆 {league}\n🕒 {_time(item.get('kickoff', ''), tz)}\n"
@@ -76,7 +84,7 @@ class ZaloNotifier:
         self._store = Store(hass, 1, f"{DOMAIN}_alerts_{entry.entry_id}")
         self._lock = asyncio.Lock()
         self._loaded = False
-        self._seen: dict[str, Any] = {"fixtures": {}, "news": [], "reminders": []}
+        self._seen: dict[str, Any] = {"fixtures": {}, "news": [], "reminders": [], "scores": {}}
 
     async def _load(self) -> None:
         if self._loaded:
@@ -93,6 +101,7 @@ class ZaloNotifier:
             "fixtures": dict(list(self._seen["fixtures"].items())[-600:]),
             "news": self._seen["news"][:200],
             "reminders": self._seen["reminders"][-600:],
+            "scores": dict(list(self._seen["scores"].items())[-600:]),
         }
         self._seen = snapshot
         self._store.async_delay_save(lambda: snapshot, 30)
@@ -137,6 +146,7 @@ class ZaloNotifier:
             articles = data.get("news", [])
             previous = self._seen["fixtures"]
             before = self._seen["news"]
+            old_scores = self._seen["scores"]
             first_run = not previous and not before
             now = datetime.now(timezone.utc)
             tz = self.hass.config.time_zone
@@ -148,7 +158,14 @@ class ZaloNotifier:
                     tz = timezone.utc
             current = {str(x["id"]): x.get("state", "pre") for x in fixtures}
             team_filter = str(opts.get("team_filter") or "").casefold().strip()
+            manager = getattr(self.hass, "data", {}).get(DOMAIN, {}).get("preferences")
+            preferences = await manager.read() if manager is not None else {}
+            selected_matches = preferences.get("matches", [])
+            selected_for_league = {item.split(":", 1)[-1] for item in selected_matches
+                                   if item.startswith(self.entry.data["league"] + ":")}
             def relevant(match: dict) -> bool:
+                if selected_for_league and str(match.get("id")) not in selected_for_league:
+                    return False
                 return not team_filter or any(team_filter in str(match.get(t, {}).get("name", "")).casefold() for t in ("home", "away"))
 
             if opts.get("zalo_enabled"):
@@ -160,6 +177,15 @@ class ZaloNotifier:
                     state = match.get("state")
                     if before_state == "pre" and state == "in" and opts.get("kickoff_alerts"):
                         await self.send(build_message("kickoff", match, self.league_name, tz))
+                    home_score = match.get("home", {}).get("score")
+                    away_score = match.get("away", {}).get("score")
+                    current_score = [home_score, away_score]
+                    previous_score = old_scores.get(match_id)
+                    if (opts.get("goal_alerts") and state == "in" and before_state == "in"
+                            and isinstance(previous_score, list) and len(previous_score) == 2
+                            and all(type(x) is int for x in previous_score + current_score)
+                            and any(new > old for old, new in zip(previous_score, current_score, strict=True))):
+                        await self.send(build_message("goal", match, self.league_name, tz))
                     if before_state in {"pre", "in"} and state == "post" and opts.get("result_alerts"):
                         if match.get("home", {}).get("score") is not None and match.get("away", {}).get("score") is not None:
                             await self.send(build_message("result", match, self.league_name, tz))
@@ -189,5 +215,10 @@ class ZaloNotifier:
                             continue
                         await self.send(build_message("news", article, self.league_name, tz))
             self._seen["fixtures"] = {**previous, **current}
+            self._seen["scores"] = {
+                **old_scores,
+                **{str(m["id"]): [m.get("home", {}).get("score"), m.get("away", {}).get("score")]
+                   for m in fixtures},
+            }
             self._seen["news"] = list(dict.fromkeys([x["id"] for x in articles] + before))[:200]
             self._save()
