@@ -7,10 +7,6 @@
 
 **Football News** là tích hợp Home Assistant được xây dựng độc lập, cung cấp dashboard bóng đá hiện đại bằng tiếng Việt, lịch thi đấu, tỷ số trực tiếp, kết quả, bảng xếp hạng, tin tức và gửi thông báo qua tích hợp **Zalo Bot**.
 
-> **Lưu ý về nguồn dự án:** Đây là sản phẩm viết mới, **không phải bản fork hoặc bản rebrand** của `Adya84/ha-football-hub`. Dự án đó sử dụng giấy phép riêng **cấm phân phối lại/đổi thương hiệu** khi chưa có chấp thuận bằng văn bản. Football News không chứa mã hoặc hình ảnh của dự án đó. Vì vậy, nó không bao gồm các công cụ Last Man Standing, Acca League, TV guide, transfers, nhiều trang chuyên sâu hoặc toàn bộ tính năng Football Hub.
-
-> **Tình trạng bản này:** Có mã nguồn, bài kiểm thử đơn vị, cấu hình Marketplace và quy trình release. Chưa chạy thử trên một Home Assistant thật hoặc xác thực trực tiếp dữ liệu ESPN/Zalo tại môi trường của người dùng. Hãy thử trên môi trường test trước khi triển khai rộng rãi.
-
 ## Cài nhanh trên Marketplace / HACS
 
 [![Mở Football News trong Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=khaisilk1910&repository=Football-News&category=integration)
@@ -183,25 +179,6 @@ Khởi động lại HA sau khi đổi YAML. Log hiển thị nhóm dữ liệu 
 
 Nếu có nguồn trả về lỗi mạng: Football News giữ kết quả gần nhất trong bộ nhớ của phiên HA hiện tại và hiển thị cảnh báo. Sau restart mà mất mạng, sensor có thể `unavailable` đến khi dữ liệu tải được. Bảng xếp hạng giữ cache 6 giờ, tin tức 30 phút, lịch thi đấu tối đa 60 giây trong bộ nhớ; không ghi raw provider JSON vào `.storage`.
 
-## Nâng cấp từ Football Hub cũ
-
-**Không phải nâng cấp tại chỗ.** Domain mới `football_news`, không phải `football_hub`, nên không có migration tự động cho config entry, yêu thích, trang riêng hay dữ liệu Last Man Standing / Acca League. Nên sao lưu Home Assistant trước, giữ tích hợp Football Hub cũ trong khi thử Football News, rồi gỡ theo nhu cầu. Không đổi tên folder `football_hub` thành `football_news`: code cũ có license hạn chế và các import/domain không tương thích.
-
-## Biểu tượng và giao diện đỏ–vàng
-
-- `custom_components/football_news/brand/icon.png` (256 × 256) và `icon@2x.png` (512 × 512): bóng đá, biểu tượng nhà Home Assistant, hình báo NEWS; phối màu đỏ và vàng.
-- Dashboard sử dụng phối màu đỏ đô, đỏ tươi và vàng kim; không còn tông cyan/teal của bản trước.
-- Biểu tượng Home Assistant chỉ mang ý nghĩa hỗ trợ nền tảng, **không ngụ ý đây là tích hợp chính thức của Home Assistant**. Tên và dấu hiệu nhận diện Home Assistant thuộc chủ sở hữu tương ứng.
-
-## File `.gitignore` ở đâu?
-
-File **`.gitignore` có tại thư mục gốc** của repository: `Football-News/.gitignore`, cùng cấp với `README.md` và `hacs.json`. Trên một số hệ điều hành, tệp bắt đầu bằng dấu chấm sẽ bị ẩn. Dùng `ls -la` trên Linux/macOS hoặc bật **Hidden items** trong File Explorer (Windows) để xem.
-
-**Phân biệt 2 bản ZIP:**
-
-- `Football-News-repository.zip` (dùng để đẩy GitHub): **có `.gitignore`**, `.github`, `LICENSE`, test, README và toàn bộ mã nguồn.
-- `football_news.zip` (asset cài Marketplace/HACS): chỉ chứa các file của `custom_components/football_news` ở root ZIP, **không có `.gitignore`**, vì đây là tệp dành cho Git chứ không dùng khi cài Home Assistant.
-
 ## Repository và phát hành bản đầu tiên
 
 Cấu trúc:
@@ -225,39 +202,6 @@ Football-News/
 └── tests/
 ```
 
-Đẩy toàn bộ cấu trúc lên `https://github.com/khaisilk1910/Football-News`:
-
-```bash
-git init
-git branch -M main
-git remote add origin https://github.com/khaisilk1910/Football-News.git
-git add .
-git commit -m "Initial Football News release"
-git push -u origin main
-```
-
-Sau khi `Validate Football News` chạy thành công, tạo tag **trùng** `version` trong `manifest.json`:
-
-```bash
-git tag -a v1.0.1 -m "Football News 1.0.1"
-git push origin v1.0.1
-```
-
-Workflow `.github/workflows/release.yml` chạy unit test, so khớp tag/version, dùng `scripts/build_release.py` đóng `football_news.zip` sao cho `manifest.json` nằm **ngay root ZIP release**, rồi tạo GitHub Release. `hacs.json` dùng `zip_release: true` và `filename: football_news.zip`; nếu Release thiếu asset này, Marketplace sẽ không tải được. Không thể tự động xác nhận một repo GitHub đã push/publish từ môi trường tạo gói này.
-
-Với mỗi phiên bản tiếp theo, cập nhật đồng bộ `const.VERSION`, `manifest.json.version`, URL cache phiên bản JS theo constant; commit rồi tạo **tag mới**, không force-push tag cũ.
-
-Để Marketplace tìm thấy repository trong catalog mặc định thay vì chỉ **Add from link**, cần đáp ứng thêm quy trình xét duyệt và thương hiệu của Home Assistant; việc có `hacs.json` **không đảm bảo** được duyệt vào catalog chính thức.
-
-## Kiểm thử và đóng góp
-
-```bash
-python -m unittest discover -s tests -p 'test_*.py' -v
-python -m compileall -q custom_components/football_news
-node --check custom_components/football_news/frontend/panel.js
-```
-
-`hassfest` và HACS validation được khai báo trong GitHub Actions nhưng chỉ thật sự được kiểm chứng khi chạy CI trên GitHub. Mở issue kèm diagnostics đã được che thông tin nếu cần hỗ trợ. Không đăng cookie, token Zalo hoặc ID người dùng/nhóm.
 
 ## Giấy phép và lưu ý
 
