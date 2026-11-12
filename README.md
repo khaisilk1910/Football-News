@@ -90,10 +90,3 @@ Nếu sau khi cập nhật vẫn không có giải đấu, mở **Cài đặt �
 
 Mục **Cầu thủ nổi bật** giờ hiển thị ngắn gọn lý do từ ESPN và ghi log theo mã giải (ví dụ `eng.1`). Dữ liệu chỉ được tổng hợp khi ESPN trả xếp hạng theo mùa thực sự; nếu nguồn từ chối truy cập, tích hợp không bỏ qua hạn chế truy cập hoặc tạo số liệu giả. Đầu tiên hãy thử **Premier League** rồi tải diagnostics/log để xác minh HTTP 403, 429, 404 hoặc cấu trúc JSON/HTML thay đổi.
 
-### Cache và mở sidebar lần đầu (2026.11.12.6)
-
-- Dữ liệu ESPN công khai được lưu dưới khóa trình duyệt `football_news_snapshot_v2` trong tối đa 6 giờ, với giới hạn dung lượng và số trận/tin mỗi giải. Dữ liệu từ lần tải thành công trước sẽ hiển thị trước khi WebSocket hoàn tất.
-- Khi Home Assistant đang nạp config entry hoặc coordinator, một phản hồi ban đầu rỗng **không** xóa cache. Trang tự thử lại; yêu cầu WebSocket bị treo quá 12 giây sẽ báo lỗi rồi thử lại.
-- Bảng cầu thủ ESPN có cache riêng `football_news_leaders_v1` trong 6 giờ. Cả hai cache chỉ nhằm cải thiện trải nghiệm, **không** thay đổi tần suất cập nhật dữ liệu trực tiếp của backend.
-- Dữ liệu bóng đá lưu tạm có thể đã cũ, nhất là khi trận đang diễn ra. Luôn kiểm tra nhãn **Đang hiển thị dữ liệu lưu tạm** và làm mới khi cần.
-- Nếu **chưa từng** tải thành công một lần, hoặc trình duyệt chặn lưu trữ, cache không thể tạo dữ liệu. Khi đó phải kết nối thành công tới Home Assistant/ESPN lần đầu.
