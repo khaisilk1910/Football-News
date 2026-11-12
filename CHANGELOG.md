@@ -1,5 +1,13 @@
 # Lịch sử Football News
 
+## 2026.11.12.8 — Sửa lỗi Home Assistant gọi cập nhật entity sai luồng
+
+- Sửa listener `football_news_preferences_updated` trong `sensor.py`: thay lambda bằng phương thức có `@callback`, bảo đảm `async_write_ha_state()` chạy trên event loop, không trên executor thread.
+- Giữ đúng cơ chế `async_on_remove` để tránh rò rỉ listener khi gỡ hoặc reload config entry.
+- Thêm regression test giả lập Home Assistant điều phối listener không đánh dấu qua thread pool, xác nhận không còn `RuntimeError`.
+- Không thay đổi giao diện, ESPN, dữ liệu yêu thích hoặc thông báo Zalo.
+
+
 ## 2026.11.12.7 — Hai cột cầu thủ trên màn hình rộng, SVG bóng/giày mới
 
 - Trang **Cầu thủ nổi bật** hiển thị 2 bảng Top 15 cạnh nhau khi khu vực hiển thị đủ rộng, tự xếp dọc khi hẹp; không thay đổi bố cục Top 3 trong trang Tổng quan.

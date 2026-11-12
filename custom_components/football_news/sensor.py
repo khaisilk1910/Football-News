@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription, SensorDeviceClass
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.core import Event, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.device_registry import DeviceInfo
 
@@ -45,8 +46,17 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
         await super().async_added_to_hass()
         if self.entity_description.key == "favorite_clubs":
             self.async_on_remove(self.hass.bus.async_listen(
-                f"{DOMAIN}_preferences_updated", lambda event: self.async_write_ha_state()
+                f"{DOMAIN}_preferences_updated", self._async_preferences_updated
             ))
+
+    @callback
+    def _async_preferences_updated(self, event: Event) -> None:
+        """Update the favourite-club sensor on Home Assistant's event loop.
+
+        Bus listeners without @callback run in an executor thread on current HA;
+        async_write_ha_state must never be called from that thread.
+        """
+        self.async_write_ha_state()
 
     @property
     def available(self):

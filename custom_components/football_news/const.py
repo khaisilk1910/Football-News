@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 DOMAIN = "football_news"
-VERSION = "2026.11.12.7"
+VERSION = "2026.11.12.8"
 DEFAULT_LEAGUE = "eng.1"
 DEFAULT_REMINDER_MINUTES = 30
 API_ROOT = "https://site.api.espn.com/apis"

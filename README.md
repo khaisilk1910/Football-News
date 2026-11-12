@@ -1,6 +1,6 @@
 # Football News · Chỉ sử dụng dữ liệu ESPN
 
-**Phiên bản 2026.11.12.7** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
+**Phiên bản 2026.11.12.8** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
 
 Football News sử dụng **ESPN** cho lịch thi đấu, kết quả, bảng xếp hạng, tin bóng đá và thống kê cầu thủ. Không yêu cầu API key hoặc tích hợp dữ liệu khác. Zalo Bot chỉ dùng để **gửi thông báo**, không cung cấp dữ liệu bóng đá.
 
@@ -51,6 +51,13 @@ Season của Premier League 2026–27 dùng `2026`; các giải theo năm lịch
 
 Mở **Thiết bị & dịch vụ → Football News → Cấu hình**. Chọn nhiều đội trong dropdown (để trống = toàn giải). Nhập tài khoản gửi và ID người nhận dạng **chuỗi** theo README của Zalo Bot; bật Markdown của Zalo Bot để định dạng tin nhắn.
 
+## Sửa lỗi thread-safety khi lưu đội yêu thích (2026.11.12.8)
+
+- Sửa listener `football_news_preferences_updated` trong `sensor.py` thành phương thức `@callback` được Home Assistant chạy trực tiếp trên event loop.
+- Không còn gọi `async_write_ha_state()` trong executor thread khi cập nhật đội yêu thích hoặc tải preferences. Listener được hủy khi entity bị tháo khỏi Home Assistant.
+- Đây là bản vá Python: **phải khởi động lại Home Assistant sau khi cập nhật**. Không cần xóa hay tạo lại các giải đấu, đội yêu thích hoặc thiết lập Zalo.
+- Nếu còn thông báo mới về thread-safety, bật log debug và gửi traceback mới (có thể chỉ ra một hàm khác).
+
 ## Chẩn đoán lỗi
 
 Trong `configuration.yaml`:
@@ -66,7 +73,7 @@ Kiểm tra **Cài đặt → Thiết bị & dịch vụ → Football News → Do
 
 ## Phát hành GitHub
 
-Cập nhật nhánh `main`, kiểm tra GitHub Actions, tạo tag tương ứng phiên bản `v2026.11.12.7`; workflow tạo Release. Giữ `.gitignore` (file ẩn trong một số ứng dụng), LICENSE và `hacs.json` tại thư mục gốc.
+Cập nhật nhánh `main`, kiểm tra GitHub Actions, tạo tag tương ứng phiên bản `v2026.11.12.8`; workflow tạo Release. Giữ `.gitignore` (file ẩn trong một số ứng dụng), LICENSE và `hacs.json` tại thư mục gốc.
 
 ## Giấy phép
 
