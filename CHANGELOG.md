@@ -1,39 +1,48 @@
-# Lịch sử cập nhật Football News
+# Lịch sử Football News
 
-## 2026.11.11.5 — Sửa nguyên nhân dashboard trắng trên trình duyệt
+## 2026.11.12.7 — Hai cột cầu thủ trên màn hình rộng, SVG bóng/giày mới
 
-- Khắc phục xung đột `this.lang` trong constructor Web Component; dùng thuộc tính nội bộ `this.locale` để không tạo attribute trước khi khởi tạo hoàn tất.
-- Thử dựng component trên Chromium thật; trang và cảnh báo dữ liệu ESPN được hiển thị, không còn lỗi `The result must not have attributes`.
-- Sửa `probatio` thành `voluptuous` ở `__init__.py` và `config_flow.py` để tích hợp có thể import schema Home Assistant.
-- Thêm `panel_entry.js` để hiển thị lỗi cụ thể khi không tải được module dashboard, tránh màn hình trống.
-- Bổ sung nguyên nhân lỗi ESPN lên WebSocket ngay cả khi lần refresh đầu thất bại hoàn toàn.
-- Đồng bộ `manifest.json`, `const.py`, frontend và cấu hình panel ở phiên bản `2026.11.11.5`.
+- Trang **Cầu thủ nổi bật** hiển thị 2 bảng Top 15 cạnh nhau khi khu vực hiển thị đủ rộng, tự xếp dọc khi hẹp; không thay đổi bố cục Top 3 trong trang Tổng quan.
+- Thay nét icon nội bộ bằng SVG bóng đá nhiều mảng rõ nét và giày chuyền bóng, có bóng và vệt chuyển động; giữ huy chương vàng/bạc/đồng cho ba hạng đầu.
+- Không phát sinh request ảnh; kiểm tra 14 tổ hợp kích thước và theme bằng Chromium, có test hồi quy frontend.
+
+## 2026.11.12.6 — Top 15, icon nội bộ và ổn định cache
+
+- Thay toàn bộ ảnh chân dung của bảng Top cầu thủ bằng biểu tượng SVG: bóng cho bàn thắng, giày chuyền bóng cho kiến tạo; hạng 1/2/3 vàng, bạc, đồng, các hạng sau trung tính. Không tạo request ảnh cầu thủ.
+- Tổng quan vẫn Top 3 của mỗi nhóm; trang Cầu thủ nổi bật mở rộng tối đa Top 15 bàn thắng và Top 15 kiến tạo khi ESPN cung cấp đủ.
+- Bộ đọc ESPN Core cho phép xét tối đa 15 vị trí ở hai nhóm, xử lý tham chiếu có giới hạn song song và timeout, không suy diễn thống kê bị thiếu.
+- Lưu snapshot công khai vào localStorage (6 giờ) và cache cầu thủ (6 giờ), giữ dữ liệu khi mở lại sidebar, tải lại trang, hoặc khi WebSocket trả phản hồi chưa đầy đủ.
+- Giảm thời gian chờ và thử đồng bộ lại khi config entry/coordinator chưa sẵn sàng. Thêm kiểm thử dữ liệu cache xuyên tab và bố cục Chromium.
 
 
-## 2026.11.11.4 — Sửa dashboard và nguồn lịch thi đấu
+## 2026.11.12.5 - Overview leader layout fix
 
-- Đăng ký trang Football News bằng API `panel_custom` của Home Assistant và khai báo dependency tương ứng.
-- Giao diện vẫn hiển thị trang và gợi ý khắc phục khi WebSocket hoặc quá trình dựng nội dung bị lỗi.
-- Fallback truy vấn scoreboard ESPN một lần khi không dùng được khoảng ngày; bổ sung thông báo lỗi và log rõ ràng.
-- Lược bỏ hoàn toàn các tính năng quản lý giải phụ không thuộc mục tiêu xem bóng đá và thông báo.
-- Giữ các tính năng lịch thi đấu, kết quả, câu lạc bộ yêu thích, chi tiết trận và Zalo.
+- Overview Top 3 goals and assists now align rank, portrait, name/club, and a numeric value in four columns; values no longer sit beneath a player name.
+- Adds an Overview Top 3 assists card when ESPN supplies data, with responsive layout and screen-reader descriptions.
+- No changes to ESPN provider, Zalo settings, or startup behavior.
 
-## 2026.11.11.3 — Mở rộng chức năng độc lập
+## 2026.11.12.4 — Ảnh chân dung cầu thủ ESPN
 
-- Dashboard đa giải đấu đã cấu hình: lịch, trực tiếp, kết quả, bảng xếp hạng, tin, lịch theo tháng.
-- Danh mục 25 mã giải/cúp, cảnh báo rõ giới hạn dữ liệu từ ESPN.
-- My Club: tối đa 5 câu lạc bộ, chọn qua ngôi sao, xem danh sách cầu thủ theo yêu cầu.
-- Chi tiết trận đọc thêm referee, weather và line-up khi nguồn có thông tin.
-- Dữ liệu đội bóng và danh sách cầu thủ dẫn đầu chỉ tải khi người dùng yêu cầu.
-- Zalo: thêm tùy chọn thông báo bàn thắng/thay đổi tỷ số, lọc trận được đánh dấu, lưu lịch sử để giảm gửi trùng.
-- Thêm bảng đối chiếu tính năng và giới hạn tại `FEATURES.md`, không sao chép tài sản Football Hub.
-- 11 bài kiểm thử đơn vị trên lõi dữ liệu và Zalo.
+- Bảng Cầu thủ nổi bật hiển thị Top 3 cho từng nhóm, với ảnh cầu thủ tròn, thứ hạng, tên, CLB, giá trị thống kê theo thiết kế di động.
+- Lấy URL ảnh từ `headshot`/`photo` ESPN; khi JSON thiếu ảnh nhưng có ESPN athlete ID hợp lệ thì dùng ảnh từ ESPN CDN.
+- Với dữ liệu thống kê HTML ESPN, lấy athlete ID từ liên kết hồ sơ cầu thủ để khôi phục ảnh mà không gọi thêm API.
+- Cũng áp dụng ảnh ESPN cho danh sách đội hình; ảnh lỗi 404 hiển thị hình người dự phòng thay vì hình lỗi.
+- Không tải ảnh trong backend hoặc khi khởi động Home Assistant; trình duyệt tải ảnh lazy-load. Bổ sung kiểm thử Python, Node.js và giao diện.
 
-## 2026.11.11.2 — Cài đặt Marketplace từ mã nguồn
 
-- Không bắt buộc GitHub Release ZIP khi cài từ Home Assistant Marketplace.
-- Đồng bộ phiên bản ở manifest/const, tăng kiểm tra CI và hướng dẫn phát hành.
+## 2026.11.12.3 — Ổn định khởi tạo và thống kê ESPN
 
-## 2026.11.11.1 — README tiếng Việt và nhận diện đỏ-vàng
+- Lần đầu mở sidebar không còn báo sai chưa có giải đấu trong lúc Home Assistant đang nạp config entry; thử lại có kiểm soát, giữ snapshot hợp lệ khi backend tạm trả danh sách rỗng.
+- Dùng runtime đã nạp nếu registry Home Assistant tạm thời không trả entry.
+- Cải thiện ESPN Core: tham chiếu cầu thủ theo mùa và league, tải có giới hạn song song, trả Top có dữ liệu sớm hơn.
+- Cải thiện fallback HTML ESPN: bảng tách cột, tiêu đề HTML `Table__Title`; không vượt trang chặn truy cập.
+- Hiển thị lỗi ESPN có mã HTTP/nguyên nhân khi mở Cầu thủ nổi bật; thêm kiểm thử cold-open, quay lại dashboard và hồi quy JSON/HTML.
 
-- Cài nhanh Marketplace, icon Football News, cải thiện giao diện và tài liệu tiếng Việt.
+
+## 2026.11.12.2
+
+- Giữ ESPN làm nguồn dữ liệu bóng đá duy nhất; bỏ toàn bộ mã provider khác, tùy chọn khóa và cầu nối cảm biến bên ngoài.
+- Dọn các cài đặt nhà cung cấp cũ trong config entry khi nâng cấp; không ảnh hưởng cấu hình Zalo, đội yêu thích hoặc dữ liệu giải.
+- Ưu tiên ESPN Core leaders theo mùa, bổ sung nhóm thống kê và giải mã athlete references có giới hạn.
+- Tài liệu tiếng Việt và kiểm thử cho các trường hợp không có dữ liệu, lỗi 403/429, và season hợp lệ.
+

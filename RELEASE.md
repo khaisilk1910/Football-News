@@ -1,109 +1,14 @@
-# Phát hành Football News trên Marketplace (Home Assistant 2026.11+)
+# Quy trình phát hành Football News (ESPN-only)
 
-## Vì sao từng gặp lỗi 404?
+1. Đưa toàn bộ mã nguồn repository lên nhánh `main`. Không tạo tag khi kiểm thử thất bại.
+2. Kiểm tra workflow **Validate Football News** (unit tests, JavaScript, Hassfest, HACS).
+3. Tạo tag **v2026.11.12.7** từ commit chính xác, không sửa tag đã phát hành.
+4. Workflow **Release Football News** sẽ đính kèm `football_news.zip` vào GitHub Release.
+5. Trong Home Assistant 2026.11+, làm mới Marketplace, cập nhật Football News rồi khởi động lại HA.
+6. Kiểm tra phiên bản trong dashboard, mở phần cầu thủ nổi bật theo từng giải và xác nhận phản hồi ESPN.
 
-Bản đầu có `zip_release: true` trong `hacs.json`. Marketplace buộc phải tải
-`football_news.zip` ở mỗi GitHub Release. Release `v2026.11.11.1` không có asset
-đúng tên tại đường dẫn được log ghi lại, nên cài đặt thất bại trước bước cài Python.
+`hacs.json` không yêu cầu `zip_release`: Marketplace có thể cài từ mã nguồn repository. ZIP dành cho cài thủ công và phát hành asset.
 
-Từ **v2026.11.11.5**, `hacs.json` bỏ `zip_release`/`filename`. Marketplace đọc
-trực tiếp `custom_components/football_news` từ repository/tag. File ZIP tiếp tục
-được tạo đính kèm GitHub Release để tải về **cài thủ công**, không còn là điều kiện
-bắt buộc cho cài đặt Marketplace.
+Nếu ESPN từ chối truy cập: bật log `custom_components.football_news: debug`, tải diagnostics và kiểm tra mã HTTP / mùa / giải. Không gọi API nhiều lần để vượt HTTP 403/429.
 
-## Bước 1 — Đẩy ĐẦY ĐỦ repository lên GitHub
-
-1. Giải nén `Football-News-repository.zip` và mở thư mục `Football-News` bên trong.
-2. Sao chép **tất cả nội dung** vào bản Git clone của `khaisilk1910/Football-News`.
-   Bao gồm `.github/workflows/release.yml`, `.github/workflows/validate.yml`,
-   `.gitignore`, `hacs.json`, `README.md`, `custom_components/football_news/`.
-3. Xóa các thư mục/file Football Hub cũ không có trong ZIP mới (đặc biệt
-   `custom_components/football_hub/`, nếu vẫn tồn tại). Không giữ hai integration
-   trong `custom_components/`, vì Marketplace có thể chọn sai domain.
-4. Dùng Git (khuyến nghị) để bảo toàn các file/thư mục ẩn. **Không** tải nguyên
-   ZIP lên GitHub như một file rồi kỳ vọng Marketplace tự giải nén.
-
-Trong bản clone đã chứa mã nguồn mới, chạy:
-
-```bash
-python scripts/check_marketplace.py
-python -m unittest discover -s tests -p 'test_*.py' -v
-git add -A
-git commit -m "Fix Marketplace install for Football News 2026.11.11.5"
-git push origin main
-```
-
-Nếu `git status` báo không có thay đổi, kiểm tra lại rằng bạn đã giải nén đúng
-nội dung vào clone và cả `.github/` lẫn `.gitignore` đã được đưa vào Git.
-
-## Bước 2 — Tạo tag mới, không tái sử dụng tag cũ
-
-**Sau khi** commit đã có trên nhánh `main` và CI thành công:
-
-```bash
-git tag -a v2026.11.11.5 -m "Football News v2026.11.11.5"
-git push origin v2026.11.11.5
-```
-
-Tag **phải trỏ đến commit đã có mã mới**, chứa:
-
-- `custom_components/football_news/manifest.json` có `"version": "2026.11.11.5"`
-- `custom_components/football_news/const.py` có `VERSION = "2026.11.11.5"`
-- `hacs.json` **không có** `zip_release: true` hoặc `filename`.
-- `.github/workflows/release.yml` được commit đầy đủ.
-
-GitHub Actions `Release Football News` sẽ kiểm tra tag, chạy unit tests,
-đóng gói `football_news.zip` và tạo Release. Nếu đã có Release nhưng thiếu file
-ZIP, vào **Actions → Release Football News → Run workflow**, nhập
-`v2026.11.11.5`. Workflow sẽ upload lại asset đúng tên. Quyền `GITHUB_TOKEN`
-phải cho phép `contents: write` để tạo/update Release.
-
-Kiểm tra tại: https://github.com/khaisilk1910/Football-News/releases
-
-> Không sửa hoặc đẩy lại tag `v2026.11.11.1` đang được phát hành; dùng bản mới.
-
-## Bước 3 — Cài qua Marketplace
-
-1. Home Assistant → **Settings → Marketplace**.
-2. Tìm repository **Football News**. Nếu chưa có: **Add from link** và thêm
-   `https://github.com/khaisilk1910/Football-News`.
-3. Làm mới trang/repository để lấy phiên bản mới. Nếu vẫn thấy tag cũ, thử đóng
-   và mở lại Marketplace; custom repository được đồng bộ theo chu kỳ, nên có thể
-   chưa xuất hiện ngay.
-4. Chọn phiên bản `v2026.11.11.5`, **Install**.
-5. Mở **Settings → Devices & services → Add integration → Football News**.
-
-Nếu giao diện vẫn cố tải `releases/download/v2026.11.11.1/football_news.zip`,
-đó là metadata/phiên bản cũ: phải kiểm tra Release mới **đã được xuất bản** và
-Marketplace đã nhận phiên bản mới. Không thể sửa bản cài cũ chỉ bằng cập nhật
-`hacs.json` trên `main` nếu Marketplace vẫn chọn tag cũ.
-
-## Cài thủ công khi chưa phát hành xong
-
-Giải nén `football_news.zip` (các file `manifest.json`, `__init__.py`, v.v.
-nằm ngay root của ZIP) vào:
-
-```text
-/config/custom_components/football_news/
-```
-
-Sau đó khởi động lại Home Assistant. Không chép nguyên tệp `football_news.zip`
-vào thư mục integration và không thêm một tầng `football_news/football_news`.
-
-## Kiểm tra khi có lỗi tiếp theo
-
-- HTTP 404: sai tên/thông tin Release hoặc Marketplace vẫn dùng metadata cũ.
-- Domain sai: xem lại chỉ có `custom_components/football_news` và manifest hợp lệ.
-- Tải thành công nhưng setup lỗi: vào Settings → System → Logs, lọc
-  `custom_components.football_news`; đây là giai đoạn khác với lỗi 404.
-- Theo dõi kết quả GitHub Actions tại
-  https://github.com/khaisilk1910/Football-News/actions
-
-## Checklist riêng cho lỗi trang sidebar trắng (v2026.11.11.5)
-
-- `manifest.json` khai báo `panel_custom` trong dependencies và phiên bản `2026.11.11.5`.
-- Không còn `import probatio as vol`; thay bằng `import voluptuous as vol`.
-- Trình duyệt nhận module `/football_news/assets/panel_entry.js?v=2026.11.11.5`.
-- `panel.js` dùng `this.locale`, **không** gán `this.lang` trong constructor.
-- Đã dùng Chromium thật để kiểm tra Web Component, ngoài kiểm thử Node.js.
-- Cần khởi động lại Home Assistant sau khi thay mã Python và tải lại trang để bỏ cache JS.
+Bản nâng cấp này tự dọn các tùy chọn nhà cung cấp bóng đá cũ trong config entry; cấu hình Zalo và đội yêu thích được giữ lại.
