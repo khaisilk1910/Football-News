@@ -1,12 +1,27 @@
 # Football News · Chỉ sử dụng dữ liệu ESPN
 
-**Phiên bản 2026.11.13.2** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
+**Phiên bản 2026.11.13.7** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
 
 Football News sử dụng **ESPN** cho lịch thi đấu, kết quả, bảng xếp hạng, tin bóng đá và thống kê cầu thủ. Không yêu cầu API key hoặc tích hợp dữ liệu khác. Zalo Bot chỉ dùng để **gửi thông báo**, không cung cấp dữ liệu bóng đá.
 
 > **Lưu ý:** Các JSON endpoint ESPN được sử dụng là nguồn công khai nhưng **không có hợp đồng API chính thức**. Trang web ESPN có thể đòi xác minh trình duyệt; bản tích hợp không tìm cách vượt qua cơ chế bảo vệ đó. Số liệu thiếu sẽ không được tự tạo.
 
 [![Thêm Football News vào Marketplace](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=khaisilk1910&repository=Football-News&category=integration)
+
+
+## Stadium Night — Giao diện được xây dựng lại hoàn toàn
+
+![Ảnh chụp trực tiếp 5 giao diện từ Chromium (dữ liệu mô phỏng)](docs/stadium-night-preview.jpg)
+
+**Không còn giao diện cũ cộng thêm banner.** Stadium Night thay toàn bộ bố cục dashboard: thanh điều hướng biểu tượng ở cạnh trái trên desktop; thanh trên cùng gọn nhẹ; khu vực sân vận động tích hợp trực tiếp **logo/tên giải, chọn Nội dung, Giải đấu và Giao diện**; thẻ trận với logo/tỷ số lớn; bảng xếp hạng dạng bảng thể thao tối, cột chỉ số căn giữa; khối tin tức, cầu thủ và CLB theo cùng hệ thiết kế.
+
+**Năm bộ nhận diện:** Premier League (tím), LaLiga (đỏ), Bundesliga (đỏ/cam), UEFA Champions League (xanh điện), Serie A (xanh lam/ngọc). Ở bộ chọn **Giao diện**, dùng **Tự động theo giải** (mặc định) hoặc cố định một kiểu. Tùy chọn chỉ lưu cục bộ trong trình duyệt.
+
+**Responsive:** desktop hiển thị thanh rail và lưới 2 cột; điện thoại ẩn rail, giữ nút mở menu Home Assistant và xếp thẻ trận thành 1 cột. Tên CLB có thể xuống dòng, logo/tỷ số tự điều chỉnh theo thẻ; bảng xếp hạng có vùng cuộn ngang nội bộ khi quá hẹp. Các phần vẫn giữ tương thích với dropdown, đội yêu thích, popup, thông báo Zalo và dữ liệu cache.
+
+**Tối ưu tốc độ:** 5 hình sân vận động khác nhau là SVG nội bộ (mỗi file khoảng 1,6–1,8 KB), không có thư viện frontend, font ngoài hoặc ảnh nền lớn. Giao diện không gọi thêm ESPN khi đổi màu. Logo CLB chỉ dùng link có sẵn trong feed ESPN và tải lazy; không tải chân dung cầu thủ. RAM/cache `.storage` và đồng bộ ESPN nền không đổi. Đồ họa dùng CSS chuyển màu nhẹ và tôn trọng `prefers-reduced-motion`.
+
+Chú ý: Giao diện Stadium Night có tông tối chủ đạo để phù hợp ảnh tham chiếu, độc lập với màu theme của Home Assistant. Các thành phần vẫn có độ tương phản cao và hoạt động trong cả chế độ sáng/tối của Home Assistant.
 
 ## Cài đặt
 
@@ -24,7 +39,7 @@ Giải nén ZIP phát hành `football_news.zip` vào `/config/custom_components/
 ## Tính năng
 
 - Lịch / vòng đấu, kết quả, trận trực tiếp, đội yêu thích, bảng xếp hạng và màu suất dự cúp/xuống hạng.
-- Dashboard tiếng Việt tông đỏ-vàng, phù hợp điện thoại, dropdown, theme Home Assistant sáng/tối.
+- Dashboard tiếng Việt có 5 bộ màu sân vận động tự đổi theo giải, phù hợp điện thoại, dropdown và theme Home Assistant sáng/tối.
 - Thống kê theo mùa từ ESPN: ghi bàn, kiến tạo, thẻ vàng/đỏ, điểm đánh giá, số trận và số phút nếu feed có đủ dữ liệu được xếp hạng.
 - Bảng cầu thủ dạng 4 cột: thứ hạng, **biểu tượng SVG tại chỗ**, tên + câu lạc bộ và chỉ số bên phải. Không tải ảnh chân dung cầu thủ, không phát sinh HTTP tới CDN ảnh.
 - **Ghi bàn:** biểu tượng bóng đá; **kiến tạo:** biểu tượng giày chuyền bóng. Vị trí 1/2/3 lần lượt vàng/bạc/đồng, hạng tiếp theo dùng màu trung tính.
@@ -103,7 +118,7 @@ Kiểm tra **Cài đặt → Thiết bị & dịch vụ → Football News → Do
 
 ## Phát hành GitHub
 
-Cập nhật nhánh `main`, kiểm tra GitHub Actions, tạo tag tương ứng phiên bản `v2026.11.13.2`; workflow tạo Release. Giữ `.gitignore` (file ẩn trong một số ứng dụng), LICENSE và `hacs.json` tại thư mục gốc.
+Cập nhật nhánh `main`, kiểm tra GitHub Actions, tạo tag tương ứng phiên bản `v2026.11.13.7`; workflow tạo Release. Giữ `.gitignore` (file ẩn trong một số ứng dụng), LICENSE và `hacs.json` tại thư mục gốc.
 
 ## Giấy phép
 
@@ -133,3 +148,29 @@ Mục **Cầu thủ nổi bật** giờ hiển thị ngắn gọn lý do từ ES
 - Các trang **Kết quả**, **Bảng xếp hạng**, **Tin tức** và **Trực tiếp** không lặp lại tiêu đề đã chọn ở dropdown Nội dung. Nội dung xuất hiện trực tiếp ngay dưới bộ lọc.
 - Trên **Tổng quan**, tiêu đề thẻ đổi từ **Bảng xếp hạng · Top 4** thành **Bảng xếp hạng**; thẻ vẫn hiển thị bốn đội như trước.
 - Không thay đổi bộ nhớ đệm, nguồn ESPN, dữ liệu đội yêu thích hay cấu hình Zalo. Sau nâng cấp phải khởi động lại Home Assistant và làm mới trình duyệt để nhận JavaScript mới.
+
+
+### Logo giải đấu ESPN (2026.11.13.5)
+
+Football News hiển thị huy hiệu thật của giải đấu từ trường `leagues[].logos[].href` trong phản hồi ESPN. Để logo xuất hiện ngay khi mở trang từ cache, một số đường dẫn ESPN CDN đã được xác minh được lưu trong `frontend/league_logos.json`. Với các giải chưa xác minh được đường dẫn tĩnh, tích hợp dùng logo mà ESPN trả về trong dữ liệu giải, không suy đoán mã ảnh, không thay bằng logo giải khác. Nếu nguồn không cấp ảnh hoặc ảnh lỗi, hệ thống hiển thị biểu tượng bóng đá trung tính, **không dùng ký tự PL/LL/BL**. Các logo được liên kết đến ESPN CDN, không lưu bản sao thương hiệu vào repository. Logo là nhãn hiệu thuộc chủ sở hữu tương ứng.
+
+Việc thay logo không bổ sung API call trong quá trình khởi động: dữ liệu logo được tái sử dụng từ scoreboard ESPN sẵn có; trình duyệt chỉ tải một ảnh của giải đang chọn. Bộ xem trước gồm 25 giải tại `docs/Football-News-25-giai-dau-logo-ESPN.html`: có đường dẫn tĩnh đã xác minh cho 13 giải và chỉ truy vấn metadata ESPN theo yêu cầu để tìm logo của 12 giải còn lại; không được xem đó là 25 logo đã được xác thực độc lập.
+
+
+### Giao diện 2026.11.13.6: logo CLB trong bảng cầu thủ
+
+- Các dropdown **Nội dung / Giải đấu / Giao diện** không còn nhãn chữ phía trên; tên trường vẫn được giữ qua `aria-label` cho trình đọc màn hình.
+- Logo giải đấu ESPN dùng tấm nền tương phản để huy hiệu tối không chìm trên nền sân vận động; Champions League dùng nền sáng độ tương phản cao (từ bản 2026.11.13.7) để hình logo tối có thể đọc rõ.
+- **Cầu thủ nổi bật** và các bảng Top trong **Tổng quan / Bảng xếp hạng** dùng logo CLB đang thi đấu (không dùng ảnh cầu thủ, bóng hay giày).
+- Logo được lấy từ phản hồi ESPN của chính cầu thủ, hoặc khớp ID/tên duy nhất với bảng xếp hạng, lịch trận và danh sách đội **thuộc cùng giải** đang có sẵn. Không truy vấn API mới khi vẽ bảng. Nếu ESPN không có logo chắc chắn, hiển thị khiên trung tính để tránh gán sai.
+- Hạng 1, 2, 3 dùng viền/nền vàng, bạc, đồng. Duy trì Top 3 ở Tổng quan và Top 15 bàn thắng/kiến tạo trong mục Cầu thủ nổi bật.
+
+
+### Hiệu chỉnh bố cục 2026.11.13.7
+
+- **Tổng quan:** thẻ Trận tiếp theo và Kết quả gần nhất được căn giữa theo chiều cao còn lại dưới tiêu đề, cả trên desktop và điện thoại. Logo, tên đội và tỷ số co giãn; không dùng khoảng trống cố định.
+- **Top cầu thủ:** Top 3 bàn thắng/kiến tạo trên Tổng quan và Top 15 trên Cầu thủ nổi bật sử dụng cùng hàm dựng hàng (thứ hạng, logo CLB, tên, số liệu); Top 1–3 vẫn có viền vàng/bạc/đồng.
+- **Logo Champions League:** vẫn giữ URL ESPN đã có, đổi nền huy hiệu sang trắng ngà thay vì xanh đậm, đồng thời đặt logo ở chính giữa bằng CSS Grid và `object-fit: contain`.
+- **Tương thích màn hình:** kiểm thử cả 280–1920 px ở theme sáng và tối, không tràn ngang các thẻ Kết quả/Lịch thi đấu/Cầu thủ; bảng xếp hạng cuộn ngang nội bộ trên màn hình hẹp.
+- **Tốc độ:** chỉ sửa frontend và CSS, không thêm nguồn ESPN, API request, thư viện hoặc ảnh nền lớn. Các tầng cache RAM/`.storage`/trình duyệt, Zalo và đội yêu thích được giữ nguyên.
+

@@ -56,6 +56,34 @@ class ProviderCalendarTests(unittest.TestCase):
         self.assertEqual(sorted(calls), ['202610', '202611', '202612'])
         self.assertTrue(all(len(item) == 6 for item in calls))
 
+    def test_league_logo_reuses_scoreboard_response_without_new_request(self):
+        obj = self.make()
+        calls = []
+        async def read(path, params=None):
+            calls.append(params["dates"])
+            return {"events": [fixture()], "leagues": [
+                {"logos": [{"href": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png"}]}]}
+        obj._json = read
+        matches = asyncio.run(obj.fixtures_month('2026-11'))
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(obj.league_logo,
+            "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png")
+
+    def test_league_logo_rejects_external_host_and_malformed_list(self):
+        obj = self.make()
+        async def read(path, params=None):
+            return {"events": [], "leagues": [
+                {"logos": [{"href": "https://invalid.example/logo.svg"}]}]}
+        obj._json=read
+        self.assertEqual(asyncio.run(obj.fixtures_month('2026-11')), [])
+        self.assertEqual(obj.league_logo, "")
+        second = self.make()
+        async def read_bad(path, params=None):
+            return {"events": [], "leagues": None}
+        second._json=read_bad
+        self.assertEqual(asyncio.run(second.fixtures_month('2026-11')), [])
+
     def test_monthly_calendar_returns_real_matches_and_reuses_cache(self):
         obj = self.make()
         calls = []

@@ -2,7 +2,7 @@
 
 1. Đưa toàn bộ mã nguồn repository lên nhánh `main`. Không tạo tag khi kiểm thử thất bại.
 2. Kiểm tra workflow **Validate Football News** (unit tests, JavaScript, Hassfest, HACS).
-3. Tạo tag **v2026.11.13.2** từ commit chính xác, không sửa tag đã phát hành.
+3. Tạo tag **v2026.11.13.7** từ commit chính xác, không sửa tag đã phát hành.
 4. Workflow **Release Football News** sẽ đính kèm `football_news.zip` vào GitHub Release.
 5. Trong Home Assistant 2026.11+, làm mới Marketplace, cập nhật Football News rồi khởi động lại HA.
 6. Kiểm tra phiên bản trong dashboard, mở phần cầu thủ nổi bật theo từng giải và xác nhận phản hồi ESPN.

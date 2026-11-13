@@ -17,7 +17,7 @@ app.leaderCache['eng.1']={leaders:[
   {category:'assists',player:'Player Assist 3',team:'Everton',value:3},
 ]};
 const markup=app.overviewCards({});
-const rows=[...markup.matchAll(/<div class="scorer-rank leader-entry overview-leader-entry">([\s\S]*?)<\/div>/g)].map(x=>x[1]);
+const rows=[...markup.matchAll(/<div class="scorer-rank leader-entry overview-leader-entry podium-[^"]+">([\s\S]*?)<\/div>/g)].map(x=>x[1]);
 assert.equal(rows.length,6,'Top 3 goals + Top 3 assists have six aligned rows');
 for(const [index,row] of rows.entries()){
   assert.match(row,/<span class="scorer-place">[123]<\/span>/);

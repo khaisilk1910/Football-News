@@ -1,3 +1,40 @@
+## 2026.11.13.7 — Đồng nhất thẻ Tổng quan và logo giải đấu
+
+- Căn giữa Trận tiếp theo và Kết quả gần nhất theo chiều cao thẻ.
+- Dùng chung bộ dựng hàng Top cầu thủ cho Tổng quan và Cầu thủ nổi bật.
+- Đặt huy hiệu Champions League trên nền sáng và sửa căn giữa logo bằng CSS Grid.
+- Giới hạn kích thước, khoảng cách thẻ cho màn hình hẹp; không thêm API hoặc thư viện.
+
+## 2026.11.13.6
+- Hide redundant visible dropdown labels while preserving accessible names.
+- Use high-contrast ESPN league crest surfaces.
+- Match player club crests from existing same-league ESPN standings/fixtures/roster or the leader record; highlight ranks 1-3.
+- Add cross-league logo safety, missing-image fallback and layout regression tests.
+
+## 2026.11.13.5
+- Thay ký tự viết tắt trên banner bằng logo giải chính thức lấy từ ESPN.
+- Danh mục 25 giải và bộ xem trước sử dụng logo CDN có kiểm chứng, tự đọc metadata ESPN khi chưa xác minh được URL tĩnh.
+- SVG bóng đá trung tính khi không có ảnh, không gán logo sai giải.
+- Không thay ESPN API, Zalo hoặc cache; chỉ bổ sung ảnh CDN cho giải được chọn.
+
+# Lịch sử Football News
+
+## 2026.11.13.4 — Stadium Night: Thiết kế lại toàn bộ giao diện
+
+- Thay cấu trúc frontend: thanh điều hướng dạng rail trên desktop, toolbar mới và một header sân vận động chứa cả bộ chọn nội dung/giải/giao diện (không còn chỉ thêm banner vào giao diện cũ).
+- Thiết kế lại toàn bộ thẻ trận đấu, bảng xếp hạng, bảng Top cầu thủ, khối tin tức và các ô Tổng quan theo hệ thống nền tối có độ tương phản cao.
+- Bổ sung 5 hình nền sân vận động SVG nội bộ khác nhau theo màu sắc giải; tự chuyển skin khi đổi giải hoặc chọn thủ công; không tải ảnh nền lớn.
+- Căn giữa số liệu và tiêu đề bảng xếp hạng; menu rail đáp ứng bằng data-tab cũ để giữ luồng điều hướng.
+- Thử giao diện 280–1920 px và 5 giải đấu, kiểm tra không tràn trang/chồng lấn tỷ số; giữ backend ESPN, Zalo và cache nguyên trạng.
+
+## 2026.11.13.3 — Stadium Editions
+
+- Năm bộ màu giao diện có thể chọn trực tiếp, mặc định tự đổi theo giải đấu.
+- Nền vector sân vận động lưu trong tích hợp, không tăng truy vấn ESPN.
+- Logo đội và tỷ số co giãn theo kích thước thẻ; tối ưu desktop, tablet, điện thoại.
+- Căn giữa toàn bộ thống kê số của bảng xếp hạng; tên đội vẫn căn trái.
+- Giữ nguyên cache RAM/đĩa, WebSocket, Zalo và nguồn ESPN.
+
 ## 2026.11.13.2 — Loại bỏ tiêu đề trùng dropdown
 
 - Không tạo khối tiêu đề trang trùng dropdown trên Kết quả, Bảng xếp hạng, Tin tức, Trực tiếp.
@@ -14,7 +51,6 @@
 - Giảm độ trễ ghi Store xuống 2 giây; giữ chính sách hạn chế ghi thường kỳ và cảnh báo dữ liệu tạm.
 - Bổ sung kiểm thử WebSocket trực tiếp, trường hợp runtime chưa tạo, dữ liệu từng phần và thử lại frontend.
 
-# Lịch sử Football News
 
 ## 2026.11.12.9 — Cache bền vững và tương phản tiêu đề
 

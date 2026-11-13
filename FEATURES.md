@@ -83,3 +83,8 @@
 - Background hydration ở thời điểm bắt đầu config entry setup; tải ESPN trong nền như trước.
 - Ghép snapshot theo từng feed (lịch/bảng/tin), giữ timestamp và trạng thái cache.
 - Cầu thủ tải độc lập, không khóa dashboard; frontend thử lại liên tục trong khi HA chưa sẵn sàng.
+
+
+## Stadium Night 2026.11.13.4
+
+Giao diện mới hoàn toàn, rail desktop, hero tích hợp filters, 5 nền SVG nhẹ, thẻ kết quả/lịch thiết kế mới, bảng xếp hạng căn cột và responsive 280–1920 px. Không phát sinh truy vấn ESPN khi đổi giao diện.
