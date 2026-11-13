@@ -1,0 +1,127 @@
+{
+  "eng.1": {
+    "name": "Premier League",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/23.png",
+    "source": "verified_espn_metadata"
+  },
+  "eng.2": {
+    "name": "EFL Championship",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/24.png",
+    "source": "verified_espn_metadata"
+  },
+  "eng.3": {
+    "name": "EFL League One",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "eng.4": {
+    "name": "EFL League Two",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "eng.fa": {
+    "name": "FA Cup",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "eng.league_cup": {
+    "name": "EFL Cup",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/41.png",
+    "source": "verified_espn_metadata"
+  },
+  "esp.1": {
+    "name": "LaLiga",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
+    "source": "verified_espn_metadata"
+  },
+  "ger.1": {
+    "name": "Bundesliga",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "ita.1": {
+    "name": "Serie A",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/12.png",
+    "source": "verified_espn_metadata"
+  },
+  "fra.1": {
+    "name": "Ligue 1",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/9.png",
+    "source": "verified_espn_metadata"
+  },
+  "ned.1": {
+    "name": "Eredivisie",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "por.1": {
+    "name": "Primeira Liga",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/14.png",
+    "source": "verified_espn_metadata"
+  },
+  "sco.1": {
+    "name": "Scottish Premiership",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "sco.2": {
+    "name": "Scottish Championship",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "usa.1": {
+    "name": "Major League Soccer",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/19.png",
+    "source": "verified_espn_metadata"
+  },
+  "irl.1": {
+    "name": "League of Ireland",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "wal.1": {
+    "name": "Cymru Premier",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "mex.1": {
+    "name": "Liga MX",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/22.png",
+    "source": "verified_espn_metadata"
+  },
+  "bra.1": {
+    "name": "Brasileirão",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "arg.1": {
+    "name": "Argentine Primera División",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
+    "source": "verified_espn_metadata"
+  },
+  "uefa.nations": {
+    "name": "UEFA Nations League",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  },
+  "fifa.world": {
+    "name": "FIFA World Cup",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/4.png",
+    "source": "verified_espn_metadata"
+  },
+  "uefa.champions": {
+    "name": "UEFA Champions League",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
+    "source": "verified_espn_metadata"
+  },
+  "uefa.europa": {
+    "name": "UEFA Europa League",
+    "logo": "https://a.espncdn.com/i/leaguelogos/soccer/500/2310.png",
+    "source": "espn_runtime_metadata"
+  },
+  "uefa.europa.conf": {
+    "name": "UEFA Conference League",
+    "logo": "",
+    "source": "espn_runtime_metadata"
+  }
+}
