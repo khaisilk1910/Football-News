@@ -27,6 +27,8 @@ def main(tag: str | None = None) -> None:
     assert "panel_custom" in manifest["dependencies"], "Missing custom panel dependency"
     assert (component / "frontend" / "panel_entry.js").is_file(), "Missing panel loader"
     assert (component / "frontend" / "panel.js").is_file(), "Missing dashboard"
+    assert (component / "disk_cache.py").is_file(), "Missing persistent HA Store cache"
+    assert (component / "cold_start.py").is_file(), "Missing cold-start disk WebSocket fallback"
     for filename in ("__init__.py", "config_flow.py"):
         text = (component / filename).read_text(encoding="utf-8")
         assert "import voluptuous as vol" in text, f"Wrong schema import in {filename}"
@@ -38,6 +40,8 @@ def main(tag: str | None = None) -> None:
     panel_source = (component / "frontend" / "panel.js").read_text(encoding="utf-8")
     assert "this.lang" not in panel_source, "HTMLElement.lang causes CustomElement constructor failure"
     version = manifest["version"]
+    entry_script=(component / "frontend" / "panel_entry.js").read_text(encoding="utf-8")
+    assert f"panel.js?v={version}" in entry_script, "Panel cache-busting version differs from manifest"
 
     # Do not import const.py: importing the integration may require Home Assistant.
     import ast

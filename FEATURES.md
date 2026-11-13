@@ -69,3 +69,17 @@
 
 - Cầu thủ nổi bật: hai bảng bàn thắng và kiến tạo cùng hàng khi vùng panel rộng; xếp dọc trên điện thoại.
 - Biểu tượng SVG bóng đá/giày chuyền bóng mới, nội bộ, không cần ảnh chân dung hoặc thêm request mạng.
+
+### Cập nhật 2026.11.13.1
+
+- Cache ESPN ở RAM và ổ đĩa `.storage` qua Home Assistant `Store`, khóa theo config entry, kiểm tra đúng mùa giải; cache được tải bất đồng bộ khi cần, không chặn khởi động bằng yêu cầu Internet.
+- Trận trực tiếp cũ không được dùng để báo đang live khi chưa nhận ESPN mới; mọi dữ liệu khôi phục đều có thông báo độ cũ.
+- Lịch, bảng xếp hạng, tin và cầu thủ khôi phục có tuổi thọ riêng; hạn chế kích thước và số lần ghi SSD, không lưu Zalo/tùy chọn cá nhân trong cache ESPN.
+- Giao diện làm nổi bật tên từng thẻ (vạch đỏ, nền nhẹ, chữ đậm, nút điều hướng tương phản), tự thích nghi theme sáng/tối.
+
+### Cold-start cache (2026.11.13.1)
+
+- WebSocket lấy dữ liệu `.storage` từ config entry ngay khi coordinator chưa được tạo.
+- Background hydration ở thời điểm bắt đầu config entry setup; tải ESPN trong nền như trước.
+- Ghép snapshot theo từng feed (lịch/bảng/tin), giữ timestamp và trạng thái cache.
+- Cầu thủ tải độc lập, không khóa dashboard; frontend thử lại liên tục trong khi HA chưa sẵn sàng.

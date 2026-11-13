@@ -1,4 +1,31 @@
+## 2026.11.13.2 — Loại bỏ tiêu đề trùng dropdown
+
+- Không tạo khối tiêu đề trang trùng dropdown trên Kết quả, Bảng xếp hạng, Tin tức, Trực tiếp.
+- Giữ nội dung bảng và danh sách hiển thị trực tiếp, căn lề responsive trên desktop/mobile.
+- Tiêu đề thẻ Tổng quan đổi thành "Bảng xếp hạng" (vẫn hiển thị Top 4).
+- Tăng phiên bản frontend để bỏ cache JavaScript cũ.
+
+## 2026.11.13.1 — Khôi phục cache ngay lần đầu mở sidebar
+
+- Sửa gốc lỗi **config entry đã tồn tại nhưng coordinator chưa khởi tạo**: WebSocket đọc snapshot `.storage` trực tiếp theo entry, giải, mùa, không phải chờ runtime.
+- Khôi phục cache coordinator bằng background task sớm hơn, trước khi chờ platform setup và không gọi ESPN ở bước này.
+- Ghép cache theo từng dataset; dữ liệu ESPN mới không bị cache cũ ghi đè.
+- Thử lại liên tục có giới hạn thời gian chờ, không dừng sau sáu lần; tải cầu thủ/đội bóng độc lập với lần tải dashboard chính.
+- Giảm độ trễ ghi Store xuống 2 giây; giữ chính sách hạn chế ghi thường kỳ và cảnh báo dữ liệu tạm.
+- Bổ sung kiểm thử WebSocket trực tiếp, trường hợp runtime chưa tạo, dữ liệu từng phần và thử lại frontend.
+
 # Lịch sử Football News
+
+## 2026.11.12.9 — Cache bền vững và tương phản tiêu đề
+
+- Bổ sung cache ESPN RAM + `Store` của Home Assistant (`.storage`), tách theo từng config entry và xác minh đúng giải/mùa; không thực hiện I/O ESPN trong quá trình khởi tạo.
+- Phục hồi bất đồng bộ lịch, bảng xếp hạng, tin và Top cầu thủ sau khi khởi động lại, giữ thời gian cập nhật nguồn, phân biệt bản lưu tạm và bản mới.
+- Giới hạn tuổi và kích thước dữ liệu, không coi trận `live` lưu trên đĩa là đang diễn ra, không ghi nội dung Zalo hoặc cấu hình người dùng vào cache công khai.
+- Hạn chế số lần ghi ổ đĩa; xử lý lỗi, dữ liệu sai cấu trúc và ESPN mất kết nối mà không ghi đè cache tốt. Phản hồi rỗng sau dữ liệu tốt cần được xác nhận lần thứ hai.
+- Bảo đảm Zalo chỉ nhận các feed trận/tin vừa được cập nhật, không phát lại thông báo dựa trên cache ổ đĩa.
+- Tăng độ rõ của tiêu đề, liên kết, các bảng thống kê theo theme; kiểm tra độ tương phản và overflow bằng Chromium.
+- Bổ sung kiểm thử Python/JavaScript cho cache khôi phục, bảo vệ tuổi/mùa, dữ liệu từng giải và cảnh báo dữ liệu lưu tạm.
+
 
 ## 2026.11.12.8 — Sửa lỗi Home Assistant gọi cập nhật entity sai luồng
 
