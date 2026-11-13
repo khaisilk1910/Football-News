@@ -160,6 +160,15 @@ class DiskCacheTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cache.validated_snapshot(doc,"eng.1")["datasets"],{})
         self.assertEqual(cache.validated_snapshot({"schema":1,"league":"eng.1","season":2026, "datasets": []},"eng.1")["datasets"],{})
 
+    async def test_old_empty_standings_snapshot_is_not_presented_as_fresh(self):
+        document={"schema":1,"league":"eng.1","season":2026,
+                  "datasets":{"standings":[],"fixtures":[{"id":"f1","state":"post"}]},
+                  "updated_at":{"standings":self.now.isoformat(),
+                                "fixtures":self.now.isoformat()}}
+        selected=cache.validated_snapshot(document,"eng.1",season=2026)
+        self.assertNotIn("standings",selected["datasets"])
+        self.assertIn("fixtures",selected["datasets"])
+
     async def test_leaders_saved_without_images_and_restored_for_next_session(self):
         obj = self.instance()
         players,cached = await obj.async_leaders()
@@ -174,18 +183,35 @@ class DiskCacheTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(cached)
         self.assertEqual(players[0]["player"],"Example")
 
-    async def test_first_empty_response_preserves_good_then_second_confirms_empty(self):
+    async def test_empty_standings_never_erase_last_good_table(self):
         obj = self.instance()
         good = await obj._async_update_data()
         self.assertEqual(len(good["standings"]), 1)
+        saved = FakeStore.documents["football_news_cache_first"]["datasets"]["standings"]
         async def empty(): return []
         obj.provider.standings = empty
+        for _ in range(3):
+            response = await obj._async_update_data()
+            self.assertEqual(response["standings"], good["standings"])
+            self.assertTrue(any("retaining last-good" in error for error in response["errors"]))
+        self.assertEqual(saved, FakeStore.documents["football_news_cache_first"]["datasets"]["standings"])
+
+    async def test_partial_update_is_saved_even_within_old_two_minute_throttle(self):
+        obj = self.instance()
+        real_standings = obj.provider.standings
+        async def unavailable(): raise FakeError("standings temporarily unavailable")
+        obj.provider.standings = unavailable
         first = await obj._async_update_data()
-        self.assertEqual(len(first["standings"]), 1)
-        self.assertTrue(any("empty ESPN response" in value for value in first["errors"]))
+        self.assertNotIn("standings", first["updated_at"])
+        self.assertIn("fixtures", first["updated_at"])
+        before = len(FakeStore.writes)
+        obj.provider.standings = real_standings
         second = await obj._async_update_data()
-        self.assertEqual(second["standings"], [])
-        self.assertFalse(any("empty ESPN response" in value for value in second["errors"]))
+        self.assertIn("standings", second["updated_at"])
+        self.assertGreater(len(FakeStore.writes), before)
+        new = self.instance()
+        await new.async_restore_cache()
+        self.assertEqual(new.data["standings"][0]["name"], "Arsenal")
 
     async def test_zalo_only_sees_fresh_espn_feeds_on_partial_outage(self):
         obj = self.instance()

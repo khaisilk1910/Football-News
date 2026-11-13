@@ -1,6 +1,6 @@
 # Football News · Chỉ sử dụng dữ liệu ESPN
 
-**Phiên bản 2026.11.13.7** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
+**Phiên bản 2026.11.13.8** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
 
 Football News sử dụng **ESPN** cho lịch thi đấu, kết quả, bảng xếp hạng, tin bóng đá và thống kê cầu thủ. Không yêu cầu API key hoặc tích hợp dữ liệu khác. Zalo Bot chỉ dùng để **gửi thông báo**, không cung cấp dữ liệu bóng đá.
 
@@ -23,6 +23,22 @@ Football News sử dụng **ESPN** cho lịch thi đấu, kết quả, bảng x�
 
 Chú ý: Giao diện Stadium Night có tông tối chủ đạo để phù hợp ảnh tham chiếu, độc lập với màu theme của Home Assistant. Các thành phần vẫn có độ tương phản cao và hoạt động trong cả chế độ sáng/tối của Home Assistant.
 
+## 2026.11.13.8 — Dữ liệu ESPN và cache khi tải lại
+
+Bản này khắc phục trường hợp Home Assistant hiển thị `Standings response has no standings content` khi ESPN trả HTTP 200 nhưng payload không có bảng xếp hạng thực tế. Bộ đọc hỗ trợ cấu trúc bảng lồng nhau, dùng tối đa một endpoint dự phòng cũng thuộc ESPN và kiểm tra mùa hiện tại. Nếu cả hai nguồn tạm lỗi, bảng hợp lệ cuối cùng từ RAM/`.storage` vẫn hiển thị (có thời điểm cập nhật, không giả là dữ liệu trực tiếp).
+
+**Lưu `.storage` theo từng dataset:** khi lịch thi đấu tải được trước nhưng bảng xếp hạng tải về sau, dữ liệu bảng vẫn được lên lịch ghi vào HA Store; không còn bị bỏ qua do giới hạn ghi chung 120 giây. `Store` tự trì hoãn ghi ngắn để tránh I/O dồn dập. Cache không thể tạo dữ liệu mà ESPN chưa từng cung cấp; dashboard sẽ cho biết thiếu dữ liệu khi cả cache và upstream đều không có.
+
+**Chẩn đoán:** bật mức debug qua Home Assistant `logger`, ví dụ:
+
+```yaml
+logger:
+  logs:
+    custom_components.football_news: debug
+```
+
+Sau đó kiểm tra **Download diagnostics**, trường `updated_at`, `cache_info.restored_datasets`, `errors` của từng giải. Không xóa config entry hoặc tệp `.storage` khi đang kiểm tra vì có thể mất dữ liệu khôi phục. Bản này không khẳng định nguồn ESPN sẽ luôn trực tuyến: HTTP 403/429 và thay đổi schema vẫn có thể xảy ra.
+
 ## Cài đặt
 
 ### Marketplace
@@ -41,8 +57,8 @@ Giải nén ZIP phát hành `football_news.zip` vào `/config/custom_components/
 - Lịch / vòng đấu, kết quả, trận trực tiếp, đội yêu thích, bảng xếp hạng và màu suất dự cúp/xuống hạng.
 - Dashboard tiếng Việt có 5 bộ màu sân vận động tự đổi theo giải, phù hợp điện thoại, dropdown và theme Home Assistant sáng/tối.
 - Thống kê theo mùa từ ESPN: ghi bàn, kiến tạo, thẻ vàng/đỏ, điểm đánh giá, số trận và số phút nếu feed có đủ dữ liệu được xếp hạng.
-- Bảng cầu thủ dạng 4 cột: thứ hạng, **biểu tượng SVG tại chỗ**, tên + câu lạc bộ và chỉ số bên phải. Không tải ảnh chân dung cầu thủ, không phát sinh HTTP tới CDN ảnh.
-- **Ghi bàn:** biểu tượng bóng đá; **kiến tạo:** biểu tượng giày chuyền bóng. Vị trí 1/2/3 lần lượt vàng/bạc/đồng, hạng tiếp theo dùng màu trung tính.
+- Bảng cầu thủ dạng 4 cột: thứ hạng, **logo câu lạc bộ ESPN**, tên + câu lạc bộ và chỉ số bên phải. Không tải ảnh chân dung cầu thủ; thiếu logo dùng biểu tượng dự phòng.
+- Vị trí Top 1/2/3 được nhấn viền vàng/bạc/đồng; hạng tiếp theo sử dụng màu trung tính.
 - **Tổng quan:** Top 3 bàn thắng và Top 3 kiến tạo. **Cầu thủ nổi bật:** tối đa **Top 15** của mỗi loại khi ESPN cung cấp đủ cầu thủ; không tự bổ sung vị trí còn thiếu.
 - **Bố cục responsive:** trên máy tính có đủ chiều rộng, hai bảng **Vua phá lưới** và **Kiến tạo hàng đầu** hiển thị **hai cột ngang nhau**. Trên điện thoại hoặc vùng nội dung hẹp, tự động xếp thành **một cột**, theo chiều rộng thực tế của panel Home Assistant (không phụ thuộc vào kích thước màn hình thiết bị).
 - **SVG mới:** bóng đá có các mảng ghép rõ nét và giày chuyền bóng kèm bóng chuyển động; dùng màu vàng/bạc/đồng cho ba vị trí đầu, không tải ảnh hoặc biểu tượng từ bên ngoài.
@@ -118,7 +134,7 @@ Kiểm tra **Cài đặt → Thiết bị & dịch vụ → Football News → Do
 
 ## Phát hành GitHub
 
-Cập nhật nhánh `main`, kiểm tra GitHub Actions, tạo tag tương ứng phiên bản `v2026.11.13.7`; workflow tạo Release. Giữ `.gitignore` (file ẩn trong một số ứng dụng), LICENSE và `hacs.json` tại thư mục gốc.
+Cập nhật nhánh `main`, kiểm tra GitHub Actions, tạo tag tương ứng phiên bản `v2026.11.13.8`; workflow tạo Release. Giữ `.gitignore` (file ẩn trong một số ứng dụng), LICENSE và `hacs.json` tại thư mục gốc.
 
 ## Giấy phép
 
@@ -160,13 +176,13 @@ Việc thay logo không bổ sung API call trong quá trình khởi động: d�
 ### Giao diện 2026.11.13.6: logo CLB trong bảng cầu thủ
 
 - Các dropdown **Nội dung / Giải đấu / Giao diện** không còn nhãn chữ phía trên; tên trường vẫn được giữ qua `aria-label` cho trình đọc màn hình.
-- Logo giải đấu ESPN dùng tấm nền tương phản để huy hiệu tối không chìm trên nền sân vận động; Champions League dùng nền sáng độ tương phản cao (từ bản 2026.11.13.7) để hình logo tối có thể đọc rõ.
+- Logo giải đấu ESPN dùng tấm nền tương phản để huy hiệu tối không chìm trên nền sân vận động; Champions League dùng nền sáng độ tương phản cao (từ bản 2026.11.13.8) để hình logo tối có thể đọc rõ.
 - **Cầu thủ nổi bật** và các bảng Top trong **Tổng quan / Bảng xếp hạng** dùng logo CLB đang thi đấu (không dùng ảnh cầu thủ, bóng hay giày).
 - Logo được lấy từ phản hồi ESPN của chính cầu thủ, hoặc khớp ID/tên duy nhất với bảng xếp hạng, lịch trận và danh sách đội **thuộc cùng giải** đang có sẵn. Không truy vấn API mới khi vẽ bảng. Nếu ESPN không có logo chắc chắn, hiển thị khiên trung tính để tránh gán sai.
 - Hạng 1, 2, 3 dùng viền/nền vàng, bạc, đồng. Duy trì Top 3 ở Tổng quan và Top 15 bàn thắng/kiến tạo trong mục Cầu thủ nổi bật.
 
 
-### Hiệu chỉnh bố cục 2026.11.13.7
+### Hiệu chỉnh bố cục 2026.11.13.8
 
 - **Tổng quan:** thẻ Trận tiếp theo và Kết quả gần nhất được căn giữa theo chiều cao còn lại dưới tiêu đề, cả trên desktop và điện thoại. Logo, tên đội và tỷ số co giãn; không dùng khoảng trống cố định.
 - **Top cầu thủ:** Top 3 bàn thắng/kiến tạo trên Tổng quan và Top 15 trên Cầu thủ nổi bật sử dụng cùng hàm dựng hàng (thứ hạng, logo CLB, tên, số liệu); Top 1–3 vẫn có viền vàng/bạc/đồng.

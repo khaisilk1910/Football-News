@@ -1,3 +1,14 @@
+## 2026.11.13.8 — Sửa ESPN standings và cache bền vững
+
+- Nhận diện bảng xếp hạng ESPN dạng `standings.entries`, `children[].standings`, nhóm lồng nhau; bác bỏ bảng chỉ chứa tên đội hoặc thiếu chỉ số thi đấu.
+- Khi endpoint bảng xếp hạng ESPN trả HTTP 200 nhưng nội dung rỗng/không hợp lệ, thử **tối đa một lần** trên endpoint ESPN dự phòng có tham số mùa. Không truy vấn vượt giới hạn HTTP 403/429.
+- Không ghi đè bảng xếp hạng hợp lệ bởi phản hồi rỗng hoặc bảng cũ khác mùa. Giữ nguyên thời điểm cập nhật thật và khôi phục từ RAM/`.storage`.
+- Loại bỏ bộ giới hạn ghi `.storage` 120 giây áp dụng chung, vì có thể bỏ lỡ dataset mới tải thành công. Dùng cơ chế debounce `Store.async_delay_save` sẵn có để ghi bất đồng bộ.
+- Thêm backoff cho endpoint ESPN lỗi, giảm lặp request khi người dùng reload; hạn chế log lặp trong thời gian mất kết nối mà vẫn giữ lỗi đầy đủ trong diagnostics.
+- Khi đã có cache, dashboard thông báo sự cố kết nối ngắn gọn thay vì hiển thị traceback hoặc câu lỗi provider thô; khi chưa từng có dữ liệu, vẫn báo lỗi để xử lý.
+- Bổ sung kiểm thử cache từng dataset, hồi phục sau restart, ESPN trả metadata, nhóm bảng lồng nhau, sai mùa, rate-limit và đồng bộ một lần.
+- **Không đổi nguồn bóng đá** (vẫn ESPN), thông báo Zalo, giao diện Stadium Night hoặc cấu hình đội yêu thích.
+
 ## 2026.11.13.7 — Đồng nhất thẻ Tổng quan và logo giải đấu
 
 - Căn giữa Trận tiếp theo và Kết quả gần nhất theo chiều cao thẻ.
