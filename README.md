@@ -132,61 +132,10 @@ logger:
 
 Kiểm tra **Cài đặt → Thiết bị & dịch vụ → Football News → Download diagnostics**. Log ghi mã giải, mùa, domain ESPN và loại lỗi, không ghi nội dung Zalo riêng tư. Nếu thấy HTTP 403/429, tránh làm mới liên tục.
 
-## Phát hành GitHub
 
-Cập nhật nhánh `main`, kiểm tra GitHub Actions, tạo tag tương ứng phiên bản `v2026.11.13.8`; workflow tạo Release. Giữ `.gitignore` (file ẩn trong một số ứng dụng), LICENSE và `hacs.json` tại thư mục gốc.
 
 ## Giấy phép
 
 Xem file `LICENSE` trong repository. ESPN và các nhãn hiệu bóng đá thuộc chủ sở hữu tương ứng; repository không phải sản phẩm chính thức của ESPN hoặc Home Assistant.
 
-
-### Khắc phục lần đầu mở sidebar không thấy giải đấu (2026.11.12.3)
-
-Khi Home Assistant vừa phục hồi config entries, trang Football News hiển thị **Đang đồng bộ danh sách giải đấu** thay vì thông báo sai rằng chưa thêm giải. Giao diện tự thử lại. Các dữ liệu ESPN đã tải thành công trước đó được giữ trong phiên trình duyệt và có đánh dấu **dữ liệu lưu tạm** nếu nguồn chưa cập nhật.
-
-Nếu sau khi cập nhật vẫn không có giải đấu, mở **Cài đặt → Thiết bị & dịch vụ → Football News** và tải **diagnostics**, bật tạm `custom_components.football_news: debug` trong `logger`. Không cần xóa/tạo lại các config entry đang hoạt động.
-
-### Khi ESPN chưa trả thống kê cầu thủ
-
-Mục **Cầu thủ nổi bật** giờ hiển thị ngắn gọn lý do từ ESPN và ghi log theo mã giải (ví dụ `eng.1`). Dữ liệu chỉ được tổng hợp khi ESPN trả xếp hạng theo mùa thực sự; nếu nguồn từ chối truy cập, tích hợp không bỏ qua hạn chế truy cập hoặc tạo số liệu giả. Đầu tiên hãy thử **Premier League** rồi tải diagnostics/log để xác minh HTTP 403, 429, 404 hoặc cấu trúc JSON/HTML thay đổi.
-
-### Cache và mở sidebar lần đầu (2026.11.12.6)
-
-- Dữ liệu ESPN công khai được lưu dưới khóa trình duyệt `football_news_snapshot_v2` trong tối đa 6 giờ, với giới hạn dung lượng và số trận/tin mỗi giải. Dữ liệu từ lần tải thành công trước sẽ hiển thị trước khi WebSocket hoàn tất.
-- Khi Home Assistant đang nạp config entry hoặc coordinator, một phản hồi ban đầu rỗng **không** xóa cache. Trang tự thử lại; yêu cầu WebSocket bị treo quá 12 giây sẽ báo lỗi rồi thử lại.
-- Bảng cầu thủ ESPN có cache riêng `football_news_leaders_v1` trong 6 giờ. Cả hai cache chỉ nhằm cải thiện trải nghiệm, **không** thay đổi tần suất cập nhật dữ liệu trực tiếp của backend.
-- Dữ liệu bóng đá lưu tạm có thể đã cũ, nhất là khi trận đang diễn ra. Luôn kiểm tra nhãn **Đang hiển thị dữ liệu lưu tạm** và làm mới khi cần.
-- Nếu **chưa từng** tải thành công một lần, hoặc trình duyệt chặn lưu trữ, cache không thể tạo dữ liệu. Khi đó phải kết nối thành công tới Home Assistant/ESPN lần đầu.
-
-## Giao diện rút gọn (2026.11.13.2)
-
-- Các trang **Kết quả**, **Bảng xếp hạng**, **Tin tức** và **Trực tiếp** không lặp lại tiêu đề đã chọn ở dropdown Nội dung. Nội dung xuất hiện trực tiếp ngay dưới bộ lọc.
-- Trên **Tổng quan**, tiêu đề thẻ đổi từ **Bảng xếp hạng · Top 4** thành **Bảng xếp hạng**; thẻ vẫn hiển thị bốn đội như trước.
-- Không thay đổi bộ nhớ đệm, nguồn ESPN, dữ liệu đội yêu thích hay cấu hình Zalo. Sau nâng cấp phải khởi động lại Home Assistant và làm mới trình duyệt để nhận JavaScript mới.
-
-
-### Logo giải đấu ESPN (2026.11.13.5)
-
-Football News hiển thị huy hiệu thật của giải đấu từ trường `leagues[].logos[].href` trong phản hồi ESPN. Để logo xuất hiện ngay khi mở trang từ cache, một số đường dẫn ESPN CDN đã được xác minh được lưu trong `frontend/league_logos.json`. Với các giải chưa xác minh được đường dẫn tĩnh, tích hợp dùng logo mà ESPN trả về trong dữ liệu giải, không suy đoán mã ảnh, không thay bằng logo giải khác. Nếu nguồn không cấp ảnh hoặc ảnh lỗi, hệ thống hiển thị biểu tượng bóng đá trung tính, **không dùng ký tự PL/LL/BL**. Các logo được liên kết đến ESPN CDN, không lưu bản sao thương hiệu vào repository. Logo là nhãn hiệu thuộc chủ sở hữu tương ứng.
-
-Việc thay logo không bổ sung API call trong quá trình khởi động: dữ liệu logo được tái sử dụng từ scoreboard ESPN sẵn có; trình duyệt chỉ tải một ảnh của giải đang chọn. Bộ xem trước gồm 25 giải tại `docs/Football-News-25-giai-dau-logo-ESPN.html`: có đường dẫn tĩnh đã xác minh cho 13 giải và chỉ truy vấn metadata ESPN theo yêu cầu để tìm logo của 12 giải còn lại; không được xem đó là 25 logo đã được xác thực độc lập.
-
-
-### Giao diện 2026.11.13.6: logo CLB trong bảng cầu thủ
-
-- Các dropdown **Nội dung / Giải đấu / Giao diện** không còn nhãn chữ phía trên; tên trường vẫn được giữ qua `aria-label` cho trình đọc màn hình.
-- Logo giải đấu ESPN dùng tấm nền tương phản để huy hiệu tối không chìm trên nền sân vận động; Champions League dùng nền sáng độ tương phản cao (từ bản 2026.11.13.8) để hình logo tối có thể đọc rõ.
-- **Cầu thủ nổi bật** và các bảng Top trong **Tổng quan / Bảng xếp hạng** dùng logo CLB đang thi đấu (không dùng ảnh cầu thủ, bóng hay giày).
-- Logo được lấy từ phản hồi ESPN của chính cầu thủ, hoặc khớp ID/tên duy nhất với bảng xếp hạng, lịch trận và danh sách đội **thuộc cùng giải** đang có sẵn. Không truy vấn API mới khi vẽ bảng. Nếu ESPN không có logo chắc chắn, hiển thị khiên trung tính để tránh gán sai.
-- Hạng 1, 2, 3 dùng viền/nền vàng, bạc, đồng. Duy trì Top 3 ở Tổng quan và Top 15 bàn thắng/kiến tạo trong mục Cầu thủ nổi bật.
-
-
-### Hiệu chỉnh bố cục 2026.11.13.8
-
-- **Tổng quan:** thẻ Trận tiếp theo và Kết quả gần nhất được căn giữa theo chiều cao còn lại dưới tiêu đề, cả trên desktop và điện thoại. Logo, tên đội và tỷ số co giãn; không dùng khoảng trống cố định.
-- **Top cầu thủ:** Top 3 bàn thắng/kiến tạo trên Tổng quan và Top 15 trên Cầu thủ nổi bật sử dụng cùng hàm dựng hàng (thứ hạng, logo CLB, tên, số liệu); Top 1–3 vẫn có viền vàng/bạc/đồng.
-- **Logo Champions League:** vẫn giữ URL ESPN đã có, đổi nền huy hiệu sang trắng ngà thay vì xanh đậm, đồng thời đặt logo ở chính giữa bằng CSS Grid và `object-fit: contain`.
-- **Tương thích màn hình:** kiểm thử cả 280–1920 px ở theme sáng và tối, không tràn ngang các thẻ Kết quả/Lịch thi đấu/Cầu thủ; bảng xếp hạng cuộn ngang nội bộ trên màn hình hẹp.
-- **Tốc độ:** chỉ sửa frontend và CSS, không thêm nguồn ESPN, API request, thư viện hoặc ảnh nền lớn. Các tầng cache RAM/`.storage`/trình duyệt, Zalo và đội yêu thích được giữ nguyên.
 
