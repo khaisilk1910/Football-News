@@ -1,0 +1,106 @@
+{
+  "title": "Football News",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Football News",
+        "description": "Select a football competition. No API key required. Data fetches start after Home Assistant has finished starting.",
+        "data": {
+          "league": "Competition"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This competition is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Football News · Settings and Zalo notifications",
+        "description": "Select any number of teams to receive Zalo match alerts for this competition. Empty means all teams. Team directory loads only when opening settings; Zalo Bot must be configured separately. Player statistics are retrieved from ESPN only.",
+        "data": {
+          "locale": "Dashboard language",
+          "zalo_enabled": "Enable Zalo notifications",
+          "zalo_account": "Zalo Bot sender (account_selection)",
+          "zalo_thread_id": "Recipient or group ID (thread_id)",
+          "zalo_thread_type": "Conversation type",
+          "schedule_alerts": "Upcoming match reminders",
+          "kickoff_alerts": "Match kickoff alerts",
+          "result_alerts": "Full-time result alerts",
+          "news_alerts": "New article alerts",
+          "reminder_minutes": "Reminder lead time (minutes)",
+          "goal_alerts": "Goal and score-change notifications",
+          "zalo_team_ids": "Notify for selected teams (multiple)"
+        }
+      }
+    },
+    "error": {
+      "zalo_missing_fields": "Please provide the sender account and recipient ID before enabling Zalo.",
+      "invalid_teams": "Selected teams are invalid for this competition."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "live_matches": {
+        "name": "Live matches"
+      },
+      "upcoming_matches": {
+        "name": "Upcoming matches"
+      },
+      "news_articles": {
+        "name": "News articles"
+      },
+      "next_kickoff": {
+        "name": "Next kickoff"
+      },
+      "last_update": {
+        "name": "Last data update"
+      },
+      "favorite_clubs": {
+        "name": "Favourite clubs"
+      }
+    },
+    "binary_sensor": {
+      "source_connected": {
+        "name": "Data source ready"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh data",
+      "description": "Refresh fixtures, news and standings.",
+      "fields": {
+        "entry_id": {
+          "name": "Configuration entry ID",
+          "description": "Optional; uses first league by default."
+        }
+      }
+    },
+    "test_zalo": {
+      "name": "Send Zalo test",
+      "description": "Send a formatted test via the installed Zalo Bot integration.",
+      "fields": {
+        "entry_id": {
+          "name": "Configuration entry ID",
+          "description": "Optional; uses first league by default."
+        }
+      }
+    },
+    "match_details": {
+      "name": "Get match details",
+      "description": "Fetch ESPN match data by ID; returns data for an automation.",
+      "fields": {
+        "entry_id": {
+          "name": "Configuration entry ID",
+          "description": "Optional; uses first league by default."
+        },
+        "event_id": {
+          "name": "ESPN event ID",
+          "description": "Numeric ID from a Football News fixture."
+        }
+      }
+    }
+  }
+}
