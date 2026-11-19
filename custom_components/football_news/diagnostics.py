@@ -8,6 +8,12 @@ async def async_get_config_entry_diagnostics(hass, entry):
     return {
         "integration_version": VERSION,
         "football_data_source": "ESPN",
+        "persistence": {
+            "football_data": "Home Assistant Store per config entry",
+            "favourites": "Home Assistant Store shared by users",
+            "appearance_navigation": "Home Assistant Store per authenticated user",
+            "browser_local_data_cache": False,
+        },
         "league": entry.data.get("league"),
         "notifications_enabled": bool(entry.options.get("zalo_enabled")),
         "alert_types": {k: bool(entry.options.get(k, False)) for k in

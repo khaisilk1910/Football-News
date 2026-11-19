@@ -21,6 +21,7 @@ from .notifications import ZaloNotifier
 from .provider import FootballProvider, ProviderError
 from .models import normalize_summary
 from .preferences import FootballPreferences
+from .ui_state import FootballUIState
 from .snapshot import competition_snapshot, runtime_for_entry
 from .cold_start import FootballColdStartCache
 
@@ -129,6 +130,16 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         # snapshot fail because an unrelated preferences Store is unavailable.
         _LOGGER.warning("Football News preferences unavailable during snapshot")
         preferences = {"clubs": [], "matches": [], "leagues": []}
+    # A missing store during an early websocket request is safe; production
+    # async_setup registers it, and the next panel read will hydrate it.
+    ui_state = {"tab": "overview", "league": "all", "style": "auto", "revision": 0}
+    ui_store = hass.data.get(DOMAIN, {}).get("ui_state")
+    user_id = getattr(connection.user, "id", None)
+    if ui_store is not None and user_id:
+        try:
+            ui_state = await ui_store.read(user_id)
+        except (OSError, ValueError, TypeError) as err:
+            _LOGGER.warning("Football News UI state read failed: %s", type(err).__name__)
     lang_entry = runtime["entry"] if runtime else (configured[0] if configured else None)
     connection.send_result(msg["id"], {
         **data,
@@ -137,11 +148,37 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         "language": lang_entry.options.get("locale", "vi") if lang_entry else "vi",
         "leagues": leagues,
         "preferences": preferences,
+        "ui_state": ui_state,
         "starter_leagues": [{"code": code, "name": LEAGUES[code]} for code in STARTER_LEAGUES],
         "configured_count": len(leagues),
         "runtime_count": sum(1 for row in leagues if row["runtime_loaded"]),
         "admin": bool(connection.user and connection.user.is_admin),
     })
+
+
+@websocket_api.websocket_command({
+    "type": "football_news/set_ui_state",
+    probatio.Optional("tab"): str,
+    probatio.Optional("league"): str,
+    probatio.Optional("style"): str,
+})
+@websocket_api.async_response
+async def ws_set_ui_state(hass: HomeAssistant, connection, msg):
+    """Save appearance/navigation for this HA account, shared across devices."""
+    if not connection.user:
+        connection.send_error(msg["id"], "unauthorized", "Authentication required")
+        return
+    changes = {key: msg[key] for key in ("tab", "league", "style") if key in msg}
+    try:
+        saved = await hass.data[DOMAIN]["ui_state"].update(connection.user.id, changes)
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid", str(err))
+        return
+    except (OSError, TypeError) as err:
+        _LOGGER.warning("Football News UI state save failed: %s", type(err).__name__)
+        connection.send_error(msg["id"], "save_failed", "Home Assistant storage write failed")
+        return
+    connection.send_result(msg["id"], saved)
 
 
 @websocket_api.websocket_command({
@@ -382,6 +419,10 @@ async def ws_toggle_favourite(hass: HomeAssistant, connection, msg):
     except ValueError as err:
         connection.send_error(msg["id"], "invalid", str(err))
         return
+    except (OSError, TypeError) as err:
+        _LOGGER.warning("Football News favourite write failed: %s", type(err).__name__)
+        connection.send_error(msg["id"], "save_failed", "Home Assistant storage write failed")
+        return
     connection.send_result(msg["id"], await prefs.read())
 
 
@@ -415,6 +456,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register static resources and actions only; never contact upstream here."""
     hass.data.setdefault(DOMAIN, {"entries": {}})
     hass.data[DOMAIN]["preferences"] = FootballPreferences(hass)
+    hass.data[DOMAIN]["ui_state"] = FootballUIState(hass)
     hass.data[DOMAIN]["cold_cache"] = FootballColdStartCache(hass)
     await hass.http.async_register_static_paths([
         StaticPathConfig("/football_news/assets", str(_ROOT / "frontend"), False),
@@ -431,6 +473,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         require_admin=False,
     )
     websocket_api.async_register_command(hass, ws_get_data)
+    websocket_api.async_register_command(hass, ws_set_ui_state)
     websocket_api.async_register_command(hass, ws_quick_setup)
     websocket_api.async_register_command(hass, ws_reload_entries)
     websocket_api.async_register_command(hass, ws_teams)
@@ -493,7 +536,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         schema=vol.Schema({vol.Required("event_id"): str, vol.Optional("entry_id"): str}),
         supports_response=SupportsResponse.ONLY,
     )
-    _LOGGER.info("Football News %s registered without startup network I/O", VERSION)
+    _LOGGER.info("Football News %s ready: HA Store is authoritative; no startup ESPN I/O", VERSION)
     return True
 
 
@@ -520,6 +563,14 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     # Home Assistant's disk, never the network. The WebSocket cold-cache path
     # independently serves panels opened while this entry is still setting up.
     await coordinator.async_restore_cache()
+
+    @callback
+    def broadcast_updated_data() -> None:
+        # Emitted *after* coordinator data changes, never during ESPN fetch.
+        # Other devices then read the same authoritative HA snapshot.
+        hass.bus.async_fire(f"{DOMAIN}_data_updated", {"league": league})
+
+    entry.async_on_unload(coordinator.async_add_listener(broadcast_updated_data))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     @callback

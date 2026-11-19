@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
+import logging
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class FootballPreferences:
@@ -31,7 +35,15 @@ class FootballPreferences:
                     if isinstance(stored.get(key), list):
                         self._data[key] = stored[key][:100]
             self._loaded = True
-            self._hass.bus.async_fire(f"{DOMAIN}_preferences_updated")
+
+    async def _commit(self, previous: dict) -> None:
+        """A failed disk write must never create an unpersisted server state."""
+        try:
+            await self._store.async_save(self._data)
+        except Exception:
+            self._data = previous
+            _LOGGER.exception("Football News preferences could not be persisted")
+            raise
 
     async def toggle_club(self, league: str, team_id: str, name: str):
         if not team_id.isascii() or not team_id.isdigit() or len(team_id) > 16:
@@ -40,6 +52,7 @@ class FootballPreferences:
             raise ValueError("Invalid club name")
         async with self._lock:
             await self._load()
+            previous = deepcopy(self._data)
             clubs = self._data["clubs"]
             found = next((club for club in clubs if club["id"] == team_id and club["league"] == league), None)
             if found:
@@ -48,7 +61,7 @@ class FootballPreferences:
                 raise ValueError("Maximum 5 favourite clubs")
             else:
                 clubs.append({"league": league, "id": team_id, "name": name.strip()})
-            await self._store.async_save(self._data)
+            await self._commit(previous)
             self._hass.bus.async_fire(f"{DOMAIN}_preferences_updated")
             return [dict(x) for x in clubs]
 
@@ -60,6 +73,7 @@ class FootballPreferences:
             raise ValueError("Invalid club name")
         async with self._lock:
             await self._load()
+            previous = deepcopy(self._data)
             clubs = self._data["clubs"]
             existing = next((club for club in clubs if club.get("id") == team_id and club.get("league") == league), None)
             changed = False
@@ -75,7 +89,7 @@ class FootballPreferences:
                 existing["name"] = name.strip()
                 changed = True
             if changed:
-                await self._store.async_save(self._data)
+                await self._commit(previous)
                 self._hass.bus.async_fire(f"{DOMAIN}_preferences_updated")
             return {"clubs": [dict(club) for club in clubs], "saved": True,
                     "enabled": enabled, "changed": changed}
@@ -83,12 +97,13 @@ class FootballPreferences:
     async def toggle_league(self, league: str):
         async with self._lock:
             await self._load()
+            previous = deepcopy(self._data)
             items = self._data["leagues"]
             if league in items:
                 items.remove(league)
             else:
                 items.append(league)
-            await self._store.async_save(self._data)
+            await self._commit(previous)
             self._hass.bus.async_fire(f"{DOMAIN}_preferences_updated")
             return list(items)
 
@@ -98,12 +113,13 @@ class FootballPreferences:
         value = f"{league}:{event_id}"
         async with self._lock:
             await self._load()
+            previous = deepcopy(self._data)
             items = self._data["matches"]
             if value in items:
                 items.remove(value)
             else:
                 items.append(value)
                 self._data["matches"] = items[-200:]
-            await self._store.async_save(self._data)
+            await self._commit(previous)
             self._hass.bus.async_fire(f"{DOMAIN}_preferences_updated")
             return list(self._data["matches"])

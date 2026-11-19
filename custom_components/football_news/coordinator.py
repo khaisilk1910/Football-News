@@ -136,6 +136,10 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._leader_updated = datetime.now(timezone.utc)
                 self._restored_datasets.discard("leaders")
                 self._persist(force=True)
+                # Leaderboard is also server-owned. Notify other open panels
+                # when an on-demand refresh replaces the shared dataset.
+                self.hass.bus.async_fire("football_news_leaders_updated",
+                                         {"league": self.provider.league})
             return rows, False
 
     async def _async_update_data(self) -> dict[str, Any]:

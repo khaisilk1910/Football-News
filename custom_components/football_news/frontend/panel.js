@@ -1,4 +1,4 @@
-/* Football News v2026.11.15.2 — stable DOM refresh for scrolling and dropdowns. */
+/* Football News v2026.11.19.1 — HA-server-backed data and UI preferences. */
 const FN_WORDS = {
   vi: {
     live:'Trực tiếp',fixtures:'Lịch thi đấu',results:'Kết quả',table:'Bảng xếp hạng',news:'Tin tức',overview:'Tổng quan',
@@ -209,17 +209,9 @@ const PREVIEW_STYLE = `
 `;
 const VIEW_KEYS = ['overview','live','fixtures','results','table','leaders','clubs','news','settings'];
 const VIEW_ICONS = {overview:'⌂', live:'⚡',fixtures:'🗓',results:'🏁',table:'🏆',leaders:'🥇',clubs:'⭐',news:'📰',settings:'⚙'};
-const VIEW_STORAGE = 'football_news_view_v1';
-const SNAPSHOT_STORAGE = 'football_news_snapshot_v1';
-const SHARED_SNAPSHOT_STORAGE = 'football_news_snapshot_v2';
-const LEADER_STORAGE = 'football_news_leaders_v1';
-// A browser-side emergency fallback if HA is restarting or temporarily offline.
-// Primary persistence is still Home Assistant .storage, not localStorage.
-const SNAPSHOT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// Football data, statistics, favourites and per-account appearance are read
+// from Home Assistant (WebSocket + HA Store), never from a browser cache.
 const LEADER_TTL_MS = 6 * 60 * 60 * 1000;
-const MAX_SNAPSHOT_BYTES = 1_800_000;
-let latestGoodSnapshot = null; // Shared within the loaded dashboard module.
-
 const UI_V8_STYLE = `
 :host{--fn-bg:var(--primary-background-color,#170b10);--fn-card:var(--card-background-color,#26131b);--fn-text:var(--primary-text-color,#fff3e9);--fn-muted:var(--secondary-text-color,#d9b7b0);--fn-border:var(--divider-color,#66313b);--fn-gold:#e6ac20;--fn-red:#ae2439;color:var(--fn-text);}
 .app{background:var(--fn-bg);color:var(--fn-text)}
@@ -310,7 +302,6 @@ const V13_STYLE = `
 `;
 
 /* Five manually selectable looks, plus automatic league matching. No fetches. */
-const FN_STYLE_STORAGE = 'football_news_visual_style_v1';
 const FN_STYLE_IDS = ['auto','premier','laliga','bundesliga','champions','seriea'];
 const FN_LEAGUE_STYLES = Object.freeze({
   'eng.1': 'premier', 'esp.1': 'laliga', 'ger.1': 'bundesliga',
@@ -438,34 +429,31 @@ class FootballNewsPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({mode:'open'});
-    const lastView = this.restoreView();
-    this.tab = VIEW_KEYS.includes(lastView.tab) ? lastView.tab : 'overview';
-    this.selectedLeague = typeof lastView.league === 'string' ? lastView.league : 'all';
-    let selectedStyle = 'auto';
-    try {selectedStyle=localStorage.getItem(FN_STYLE_STORAGE)||'auto';}catch{/* private mode */}
-    this.visualStyle = FN_STYLE_IDS.includes(selectedStyle) ? selectedStyle : 'auto';
+    this.tab = 'overview';
+    this.selectedLeague = 'all';
+    this.visualStyle = 'auto';
     this.modal = null;
-    const previous = this.restoreSnapshot();
-    // Render a last-known-good snapshot immediately while HA reconnects.
-    // Never replay a saved 'in progress' match as live after restarting a tab.
-    // Only a fresh ESPN response is allowed to assert a LIVE status.
-    const safeSavedData = previous ? {...previous.data, leagues:previous.data.leagues.map(l=>({
-      ...l, fixtures:(l.fixtures||[]).map(f=>f.state==='in'
-        ? {...f,state:'unknown',status:'Cached — awaiting ESPN'} : f)
-    }))} : null;
-    this.data = safeSavedData ? {...DEFAULT_DATA, ...safeSavedData, admin:false} : DEFAULT_DATA;
-    this._snapshotAt = previous?.savedAt || 0;
-    this._showingCached = Boolean(previous);
+    // The server owns the last-known-good disk cache. A new device must not
+    // bootstrap from a different browser's stale (or untrusted) snapshot.
+    this.data = DEFAULT_DATA;
+    this._snapshotAt = 0;
+    this._showingCached = false;
+    this._uiRevision = -1;
+    this._uiSavePending = 0;
+    this._uiWrite = Promise.resolve();
+    this._syncPending = false;
+    this._subscriptions = [];
+    this._subscribedConnection = null;
     this._emptyResponses = 0;
     // An empty WebSocket snapshot during HA cold start is not proof that the
     // user removed every configured competition. Never erase last-good data.
-    this._registryPending = !previous;
-    this._registryEverReady = Boolean(previous);
+    this._registryPending = true;
+    this._registryEverReady = false;
     this._emptySince = 0;
     this._retryCount = 0;
     this._retryTimer = null;
     this.locale = FN_WORDS[this.data.language] ? this.data.language : 'vi';
-    this.leaderCache = this.restoreLeaders();
+    this.leaderCache = {}; // HA coordinator persists leader data centrally.
     this.teamCache = {};
     this.clubCache = {};
     this._clubBriefPending = new Set();
@@ -493,6 +481,15 @@ class FootballNewsPanel extends HTMLElement {
     this._hass = null;
     this._onVisibility = () => {if (!document.hidden) void this.load();};
     this._onOnline = () => {void this.load();};
+    this._onLeadersUpdated = event => {
+      const league=event?.data?.league;
+      if (league && this.leaderCache[league]) delete this.leaderCache[league];
+      this._onSharedUpdate();
+    };
+    this._onSharedUpdate = () => {
+      if (this._loading || this._uiSavePending) this._syncPending = true;
+      else void this.load();
+    };
     this.shadowRoot.addEventListener('error', event => {
       // A missing ESPN league crest must never cover the lightweight badge.
       if (event.target.matches?.('.league-mark img')) { event.target.hidden=true; event.target.closest('.league-mark')?.classList.add('is-missing-logo'); }
@@ -506,7 +503,7 @@ class FootballNewsPanel extends HTMLElement {
         const selected=event.target.value;
         if (FN_STYLE_IDS.includes(selected)) {
           this.visualStyle=selected;
-          try {localStorage.setItem(FN_STYLE_STORAGE, selected);} catch {/* private mode */}
+          void this.saveUIState({style:selected});
           this.render();
         }
       }
@@ -537,88 +534,64 @@ class FootballNewsPanel extends HTMLElement {
       });
     });
   }
-  restoreView() {
-    try {return JSON.parse(sessionStorage.getItem(VIEW_STORAGE) || '{}') || {};}
-    catch {return {};}
-  }
-  rememberView() {
-    try {sessionStorage.setItem(VIEW_STORAGE, JSON.stringify({tab:this.tab,league:this.selectedLeague}));}
-    catch { /* Storage can be blocked in private browsing; navigation still works. */ }
-  }
-  restoreSnapshot() {
-    // Local storage survives leaving the sidebar, a page reload and a new tab.
-    // The legacy per-tab snapshot is still readable during upgrades.
-    const candidates = [latestGoodSnapshot];
-    // Even reading Window.sessionStorage/localStorage can throw SecurityError
-    // in a sandboxed panel, so resolve them inside guarded blocks.
-    try {candidates.push(JSON.parse(sessionStorage.getItem(SNAPSHOT_STORAGE) || 'null'));}
-    catch { /* Session storage unavailable. */ }
-    try {candidates.push(JSON.parse(localStorage.getItem(SHARED_SNAPSHOT_STORAGE) || 'null'));}
-    catch { /* Local storage unavailable. */ }
-    const now = Date.now();
-    return candidates.filter(saved=>saved && Number.isFinite(saved.savedAt) &&
-      now - saved.savedAt <= SNAPSHOT_TTL_MS && saved.savedAt <= now + 300000 &&
-      Array.isArray(saved.data?.leagues) && saved.data.leagues.length)
-      .sort((a,b)=>b.savedAt-a.savedAt)[0] || null;
-  }
-  rememberSnapshot(response, savedAt=Date.now()) {
-    // Cache only football fixtures and standings, never Zalo credentials,
-    // account IDs or Home Assistant security-related state. Local-storage
-    // snapshot deliberately excludes personal favourites across HA accounts.
-    if (!Array.isArray(response?.leagues) || !response.leagues.length ||
-        !response.leagues.some(l=>['fixtures','standings','news'].some(k=>(l[k]||[]).length))) return;
-    try {
-      const leagues = response.leagues.map(league => ({
-        league_code:league.league_code, name:league.name, entry_id:league.entry_id,
-        entry_state:league.entry_state, runtime_loaded:league.runtime_loaded,
-        ready:league.ready, attempted:league.attempted, errors:[], updated_at:league.updated_at || {},
-        cache_info:league.cache_info || {},
-        fixtures:(league.fixtures || []).slice(0,120),
-        standings:(league.standings || []).slice(0,60),
-        news:(league.news || []).slice(0,12),
-      }));
-      const snapshot = {savedAt,data:{language:response.language,
-        leagues,preferences:{clubs:response.preferences?.clubs || [],
-          matches:response.preferences?.matches || []}}};
-      latestGoodSnapshot=snapshot;
-      const sessionText=JSON.stringify(snapshot);
-      if (sessionText.length <= MAX_SNAPSHOT_BYTES && typeof sessionStorage !== 'undefined') {
-        try {sessionStorage.setItem(SNAPSHOT_STORAGE,sessionText);} catch { /* quota/private mode */ }
+  // Home Assistant is the single durable source of truth for preferences.
+  // Field-level writes are serialized to avoid racing two quick UI changes.
+  saveUIState(changes) {
+    this._uiSavePending++;
+    this._uiWrite = this._uiWrite.catch(() => {}).then(async () => {
+      const saved = await this.request({type:'football_news/set_ui_state',...changes});
+      if (Number.isSafeInteger(saved?.revision))
+        this._uiRevision=Math.max(this._uiRevision,saved.revision);
+    }).catch(error => {
+      console.warn('[Football News] Server UI settings not saved', String(error?.message || error));
+      this._uiRevision=-1; // Re-read the authoritative version after an error.
+      this._syncPending=true;
+      this.saveStatus={ok:false,message:this.locale==='vi'
+        ? 'Không lưu được tùy chọn trên Home Assistant. Kiểm tra kết nối/log.'
+        : 'Could not save settings to Home Assistant. Check connection/logs.'};
+      if (this.isConnected) this.render();
+    }).finally(() => {
+      this._uiSavePending--;
+      if (!this._uiSavePending && this._syncPending) {
+        this._syncPending=false;
+        if (this.isConnected) void this.load();
       }
-      const shared={savedAt,data:{language:response.language,
-        leagues:leagues.map(({entry_id,...row})=>row),
-        preferences:{clubs:[],matches:[]}}};
-      const sharedText=JSON.stringify(shared);
-      if(sharedText.length <= MAX_SNAPSHOT_BYTES && typeof localStorage !== 'undefined') {
-        try {localStorage.setItem(SHARED_SNAPSHOT_STORAGE,sharedText);} catch { /* quota/private mode */ }
-      }
-    } catch { /* Cached data is an optimization, never a requirement. */ }
+    });
+    return this._uiWrite;
   }
-  restoreLeaders() {
-    try {
-      if (typeof localStorage === 'undefined') return {};
-      const stored=JSON.parse(localStorage.getItem(LEADER_STORAGE) || 'null');
-      if (!stored || typeof stored !== 'object') return {};
-      const now=Date.now();
-      return Object.fromEntries(Object.entries(stored).filter(([,feed])=>
-        feed && Array.isArray(feed.leaders) && Number.isFinite(feed.savedAt) &&
-        now-feed.savedAt>=0 && now-feed.savedAt<LEADER_TTL_MS)
-        .map(([league,feed])=>[league,{...feed,from_cache:true}]));
-    } catch {return {};}
+  applyServerUI(settings) {
+    if (!settings || this._uiSavePending ||
+        !Number.isSafeInteger(settings.revision) ||
+        settings.revision <= this._uiRevision) return;
+    if (VIEW_KEYS.includes(settings.tab)) this.tab=settings.tab;
+    if (typeof settings.league === 'string') this.selectedLeague=settings.league;
+    if (FN_STYLE_IDS.includes(settings.style)) this.visualStyle=settings.style;
+    this._uiRevision=settings.revision;
+    this.roundIndex=null;
   }
-  rememberLeaders() {
-    try {
-      if (typeof localStorage === 'undefined') return;
-      const entries=Object.entries(this.leaderCache).filter(([,feed])=>
-        feed && Array.isArray(feed.leaders) && !feed.error &&
-        Number.isFinite(feed.savedAt) && Date.now()-feed.savedAt<LEADER_TTL_MS);
-      // Public ESPN statistics only, not photos or personal data.
-      const kept=Object.fromEntries(entries.slice(-8).map(([league,feed])=>
-        [league,{savedAt:feed.savedAt,from_cache:true,
-          leaders:feed.leaders.slice(0,100).map(({photo,...row})=>row)}]));
-      const json=JSON.stringify(kept);
-      if(json.length<450000)localStorage.setItem(LEADER_STORAGE,json);
-    } catch { /* Storage quota / browser restrictions. */ }
+  subscribeSharedUpdates() {
+    const connection=this._hass?.connection;
+    if (!connection || typeof connection.subscribeEvents !== 'function' ||
+        this._subscribedConnection === connection) return;
+    this.unsubscribeSharedUpdates();
+    this._subscribedConnection=connection;
+    for (const type of ['football_news_preferences_updated','football_news_ui_state_updated','football_news_data_updated','football_news_leaders_updated']) {
+      Promise.resolve(connection.subscribeEvents(type==='football_news_leaders_updated'?this._onLeadersUpdated:this._onSharedUpdate,type)).then(unsubscribe => {
+        if (this._subscribedConnection === connection && this.isConnected) {
+          if (typeof unsubscribe === 'function') this._subscriptions.push(unsubscribe);
+        } else if (typeof unsubscribe === 'function') unsubscribe();
+      }).catch(error => {
+        console.debug('[Football News] Shared change subscription unavailable',type,String(error?.message || error));
+        if (this._subscribedConnection === connection) this._subscribedConnection=null;
+      });
+    }
+  }
+  unsubscribeSharedUpdates() {
+    this._subscribedConnection=null;
+    for (const unsubscribe of this._subscriptions) {
+      try {unsubscribe();} catch { /* HA connection was already closed */ }
+    }
+    this._subscriptions=[];
   }
   scheduleRetry() {
     if (!this.isConnected || this._retryTimer || typeof setTimeout !== 'function') return;
@@ -695,16 +668,16 @@ class FootballNewsPanel extends HTMLElement {
     this.modal=null;
     if (tab === 'clubs' && this.selectedLeague === 'all' && this.leagues().length)
       this.selectedLeague=this.leagues()[0].league_code;
-    this.rememberView();this.render();
+    void this.saveUIState({tab:this.tab,league:this.selectedLeague});this.render();
     if (tab === 'clubs') { await this.loadTeams(); void this.loadFavouriteClubBriefs(); }
     if (tab === 'leaders' || tab === 'table' || tab === 'overview') await this.loadLeaders(this.previewLeague()?.league_code);
   }
   async chooseLeague(code) {
-    if (!this.leagues().some(l=>l.league_code===code)) return;
+    if (code !== 'all' && !this.leagues().some(l=>l.league_code===code)) return;
     this.selectedLeague=code;
     this.roundIndex=null;
     this._searchTeam='';
-    this.rememberView();this.render();
+    void this.saveUIState({tab:this.tab,league:this.selectedLeague});this.render();
     if(this.tab==='clubs') {await this.loadTeams();void this.loadFavouriteClubBriefs();}
     if(['leaders','table','overview'].includes(this.tab)) await this.loadLeaders(this.previewLeague()?.league_code);
   }
@@ -712,9 +685,11 @@ class FootballNewsPanel extends HTMLElement {
     const changed = !!this._hass && this._hass.connection !== hass?.connection;
     this._hass = hass;
     if (changed) {
+      this.unsubscribeSharedUpdates();
       this._retryCount = 0;
       this._lastAttempt = 0;
     }
+    if (this.isConnected) this.subscribeSharedUpdates();
     // HA can assign hass after connectedCallback. Trigger immediately on
     // first assignment or a new WebSocket connection, not after a tab switch.
     if (this.isConnected && !this._loading &&
@@ -724,6 +699,7 @@ class FootballNewsPanel extends HTMLElement {
   }
   set narrow(narrow) { this._narrow = Boolean(narrow); }
   connectedCallback() {
+    this.subscribeSharedUpdates();
     this.render();
     void this.load();
     document.addEventListener?.('visibilitychange', this._onVisibility);
@@ -746,6 +722,7 @@ class FootballNewsPanel extends HTMLElement {
     }, 5000);
   }
   disconnectedCallback() {
+    this.unsubscribeSharedUpdates();
     clearInterval(this._timer);
     if (this._retryTimer) clearTimeout(this._retryTimer);
     if (this._toastTimer) clearTimeout(this._toastTimer);
@@ -813,29 +790,6 @@ class FootballNewsPanel extends HTMLElement {
     })]);}
     finally {if (timer && typeof clearTimeout === 'function') clearTimeout(timer);}
   }
-  mergeIncompleteFeeds(response) {
-    const previous=new Map(this.leagues().map(row=>[row.league_code,row]));
-    let retained=false;
-    const leagues=response.leagues.map(next => {
-      const prior=previous.get(next.league_code);
-      if(!prior) return next;
-      let merged=next;
-      for(const field of ['fixtures','standings','news']) {
-        // A cold coordinator has no timestamp. Do not replace an old successful
-        // dataset with an uninitialized empty one after browser/HA reload.
-        if (!(next.updated_at||{})[field] && (prior.updated_at||{})[field] &&
-            Array.isArray(prior[field]) && prior[field].length &&
-            (!Array.isArray(next[field]) || !next[field].length)) {
-          if(merged===next) merged={...next,updated_at:{...(next.updated_at||{})}};
-          merged[field]=prior[field];
-          merged.updated_at[field]=prior.updated_at[field];
-          retained=true;
-        }
-      }
-      return merged;
-    });
-    return {leagues,retained};
-  }
   async load() {
     if (this._loading || !this._hass) return;
     this._loading = true;
@@ -866,7 +820,8 @@ class FootballNewsPanel extends HTMLElement {
       this._registryPending = false;
       this._emptyResponses = 0;
       this._emptySince = 0;
-      const {leagues,retained}=this.mergeIncompleteFeeds(data);
+      const leagues=data.leagues;
+      const retained=false;
       const diskRestored = leagues.some(l=>(l.cache_info?.restored_datasets||[]).length>0);
       // A league with only a news timestamp was previously considered fully
       // loaded: the initial screen stayed blank until the user left/reopened.
@@ -876,10 +831,11 @@ class FootballNewsPanel extends HTMLElement {
         l.attempted === false ||
         !['fixtures','standings','news'].some(k=>(l[k]||[]).length)) || diskRestored;
       this.data = {...DEFAULT_DATA, ...alive(data),leagues};
+      this.applyServerUI(data.ui_state);
       this.locale = FN_WORDS[this.data.language] ? this.data.language : 'vi';
-      if (this.leagues().length && !this.leagues().some(l => l.league_code === this.selectedLeague)) {this.selectedLeague=this.leagues()[0].league_code;this.rememberView();}
+      if (this.selectedLeague !== 'all' && this.leagues().length && !this.leagues().some(l=>l.league_code===this.selectedLeague)) {this.selectedLeague='all';void this.saveUIState({league:'all'});}
       this._last = Date.now();
-      this._showingCached = retained || diskRestored || (incomplete && Boolean(this._snapshotAt));
+      this._showingCached = diskRestored || leagues.some(l=>(l.errors||[]).length>0) || (incomplete && Boolean(this._snapshotAt));
       if(!retained && !incomplete) {
         this._snapshotAt = this._last;
         this._retryCount = 0;
@@ -887,9 +843,8 @@ class FootballNewsPanel extends HTMLElement {
       }
       // Do not re-date old disk snapshots as if they were just fetched live.
       const sourceTimes = leagues.flatMap(l=>Object.values(l.updated_at||{}).map(ts)).filter(x=>x>0);
-      const actualSourceTime = diskRestored && sourceTimes.length ? Math.max(...sourceTimes) : Date.now();
-      if (leagues.length) this.rememberSnapshot(this.data, retained && this._snapshotAt ? this._snapshotAt : actualSourceTime);
-      else {try {sessionStorage.removeItem(SNAPSHOT_STORAGE);}catch { /* optional storage */ }}
+      const actualSourceTime = sourceTimes.length ? Math.max(...sourceTimes) : Date.now();
+      this._snapshotAt = actualSourceTime; // Report HA/ESPN timestamps, not browser state.
       this.error = '';
       this.render();
       if (retained || incomplete) this.scheduleRetry();
@@ -911,7 +866,13 @@ class FootballNewsPanel extends HTMLElement {
       this.render();
       this.scheduleRetry();
     }
-    finally {this._loading = false;}
+    finally {
+      this._loading = false;
+      if (this._syncPending && !this._uiSavePending) {
+        this._syncPending=false;
+        if (this.isConnected) void this.load();
+      }
+    }
   }
   async loadLeaders(league = this.previewLeague()?.league_code) {
     const old=this.leaderCache[league];
@@ -922,7 +883,7 @@ class FootballNewsPanel extends HTMLElement {
     try {
       const result=await this.request({type:'football_news/leaders',league});
       this.leaderCache[league] = {...result,savedAt:Date.now()};
-      this.rememberLeaders();
+      // Leader stats are saved centrally by the HA coordinator.
     } catch(error) {
       this.leaderCache[league] = {leaders:[],error:true,
         errorMessage:String(error?.message || 'ESPN player statistics unavailable').slice(0,180)};
@@ -1061,7 +1022,6 @@ class FootballNewsPanel extends HTMLElement {
           if (reply?.saved !== true || !Array.isArray(reply.clubs)) throw new Error('Server did not confirm saving');
           // Prefer the acknowledged server copy; never fake a successful save.
           this.data.preferences={...this.prefs(),clubs:reply.clubs};
-          if (this.leagues().length) this.rememberSnapshot(this.data, this._snapshotAt || Date.now());
           this.saveStatus={ok:true,message:current?this.t('favouriteRemoved'):this.t('favouriteSaved')};
           if(this.tab==='clubs')void this.loadFavouriteClubBriefs();
         } else {
@@ -1069,7 +1029,6 @@ class FootballNewsPanel extends HTMLElement {
             league:data.fixtureLeague,event_id:data.matchStar});
           if(!reply || !Array.isArray(reply.matches))throw new Error('Server did not confirm saving');
           this.data.preferences=reply;
-          if (this.leagues().length) this.rememberSnapshot(this.data, this._snapshotAt || Date.now());
           this.saveStatus={ok:true,message:this.t('favouriteSaved')};
         }
       } catch(err) {
