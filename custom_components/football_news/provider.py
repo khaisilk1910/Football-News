@@ -132,6 +132,53 @@ class FootballProvider:
 
         return await self.cached(f"month:{yyyymm}", ttl, fetch)
 
+    async def matchday_scoreboard(self, yyyymmdd: str) -> list[dict]:
+        """Fetch fresh scores for one UTC day, independent of month cache.
+
+        Dashboard devices share the same provider single-flight cache. During
+        Live this has a 12-second TTL; the coordinator chooses a 15-60 second
+        cadence. Invalid/empty envelopes never overwrite a known-good match.
+        """
+        if len(yyyymmdd) != 8 or not yyyymmdd.isascii() or not yyyymmdd.isdigit():
+            raise ProviderError("Invalid matchday")
+        try:
+            datetime.strptime(yyyymmdd, "%Y%m%d")
+        except ValueError as err:
+            raise ProviderError("Invalid matchday") from err
+
+        async def fetch():
+            payload = await self._json(
+                f"site/v2/sports/soccer/{self.league}/scoreboard",
+                {"dates": yyyymmdd, "limit": 200},
+            )
+            if not isinstance(payload.get("events"), list):
+                raise ProviderError(f"Matchday {yyyymmdd}: events array missing")
+            # ESPN's date filter can be interpreted in a competition/local
+            # timezone. Do not discard a legitimate match crossing UTC midnight.
+            return self._clean_fixtures(payload["events"])
+
+        return await self.cached(f"matchday:{yyyymmdd}", 12, fetch)
+
+    async def live_fixtures(self, days: tuple[str, ...]) -> list[dict]:
+        """Fetch up to three relevant days; fail only if every day failed."""
+        if not days:
+            return []
+        results = await asyncio.gather(
+            *(self.matchday_scoreboard(day) for day in days[:3]), return_exceptions=True
+        )
+        matches, errors = [], []
+        for day, result in zip(days, results, strict=True):
+            if isinstance(result, Exception):
+                errors.append(f"{day}: {type(result).__name__}")
+            else:
+                matches.extend(result)
+        if errors:
+            _LOGGER.debug("ESPN matchday partial failure league=%s days=%s",
+                          self.league, ", ".join(errors))
+        if len(errors) == len(results):
+            raise ProviderError("All live scoreboard days unavailable: " + ", ".join(errors))
+        return matches
+
     async def fixtures(self) -> list[dict]:
         """Load the 14-day history plus 35-day outlook by *calendar month*.
 
@@ -266,7 +313,11 @@ class FootballProvider:
         # Strictly restrict to ESPN numeric event identifiers.
         if not event_id.isascii() or not event_id.isdigit() or len(event_id) > 24:
             raise ProviderError("Invalid event identifier")
-        return await self._json(f"site/v2/sports/soccer/{self.league}/summary", {"event": event_id})
+        async def fetch():
+            return await self._json(f"site/v2/sports/soccer/{self.league}/summary", {"event": event_id})
+        # Multiple open match views share one fetch; a Live viewer can refresh
+        # the event timeline every ~15s without each device calling ESPN.
+        return await self.cached(f"summary:{event_id}", 12, fetch)
 
     async def club(self, team_id: str) -> dict:
         if not team_id.isascii() or not team_id.isdigit() or len(team_id) > 16:

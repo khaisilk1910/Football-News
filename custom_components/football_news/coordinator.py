@@ -14,7 +14,9 @@ from typing import Any
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import LEAGUES
+from .adaptive import RefreshPlan, merge_fixtures, refresh_plan
 from .disk_cache import FootballDiskCache, parse_time
+from .live_events import LiveEventTracker, fixture_score_from_summary
 from .provider import FootballProvider, ProviderError
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,6 +49,14 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cache_loaded = False
         self._restored_datasets: set[str] = set()
         self._empty_streak: dict[str, int] = {key: 0 for key in _DATASETS}
+        self._calendar_checked_at: float | None = None
+        self._last_persisted_at = 0.0
+        self._last_visible_change = True
+        self._poll_plan = RefreshPlan("idle", 300)
+        self._live_event_tracker = LiveEventTracker()
+        self._live_event_task: asyncio.Task | None = None
+        self._live_event_cursor = 0
+        self._live_events_stopped = False
 
     def _snapshot(self, errors: list[str] | None = None) -> dict[str, Any]:
         return {
@@ -58,6 +68,9 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "errors": errors if errors is not None else self._last_errors[:3],
             "cache_info": {"restored_datasets": sorted(self._restored_datasets),
                            "type": "disk" if self._restored_datasets else "memory"},
+            "refresh_policy": {"mode": self._poll_plan.mode,
+                               "seconds": self._poll_plan.seconds,
+                               "focused_days": list(self._poll_plan.days)},
         }
 
     async def async_restore_cache(self) -> None:
@@ -142,16 +155,145 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                          {"league": self.provider.league})
             return rows, False
 
+    def _log_score_changes(self, previous: list[dict], fresh: list[dict]) -> None:
+        """Useful, low-volume logs for real ESPN score/status transitions."""
+        before = {str(item.get("id")): item for item in previous if isinstance(item, dict)}
+        for item in fresh:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            prior = before.get(str(item["id"]))
+            if not prior:
+                continue
+            old_score = (prior.get("home", {}).get("score"), prior.get("away", {}).get("score"))
+            new_score = (item.get("home", {}).get("score"), item.get("away", {}).get("score"))
+            old_state, new_state = prior.get("state"), item.get("state")
+            if old_score != new_score or old_state != new_state:
+                _LOGGER.info("Football News match changed league=%s event=%s status=%s->%s score=%s->%s",
+                             self.provider.league, item["id"], old_state, new_state,
+                             old_score, new_score)
+
+    def _choose_plan(self, fixtures: list[dict]) -> RefreshPlan:
+        speed = getattr(self.entry, "options", {}).get("live_refresh_seconds", 20)
+        return refresh_plan(fixtures, live_seconds=speed)
+
+    async def _refresh_fixtures(self, plan: RefreshPlan) -> list[dict]:
+        """Fetch short-lived matchday scores and slow calendar independently.
+
+        Active games must never wait for the two-minute month cache to expire.
+        During Live, use only today's relevant matchday(s) on most ticks;
+        periodically reconcile the full 14/35-day fixture calendar.
+        """
+        now = monotonic()
+        calendar_due = (self._calendar_checked_at is None or
+                        now - self._calendar_checked_at >= 300 or
+                        not self._dataset_updates.get("fixtures"))
+        if not plan.days:
+            rows = await self.provider.fixtures()
+            self._calendar_checked_at = monotonic()
+            return rows
+
+        if not calendar_due:
+            fresh = await self.provider.live_fixtures(plan.days)
+            return merge_fixtures(self._data["fixtures"], fresh)
+
+        calendar, daily = await asyncio.gather(
+            self.provider.fixtures(), self.provider.live_fixtures(plan.days),
+            return_exceptions=True,
+        )
+        if not isinstance(calendar, Exception):
+            self._calendar_checked_at = monotonic()
+        if isinstance(calendar, Exception) and isinstance(daily, Exception):
+            raise ProviderError("Calendar and live scoreboard unavailable: " +
+                                f"{type(calendar).__name__}, {type(daily).__name__}")
+        if isinstance(calendar, Exception):
+            _LOGGER.debug("Calendar unavailable league=%s; merging fresh matchday scores",
+                          self.provider.league)
+            return merge_fixtures(self._data["fixtures"], daily)
+        if isinstance(daily, Exception):
+            _LOGGER.debug("Live scoreboard unavailable league=%s; using calendar snapshot",
+                          self.provider.league)
+            # A stale calendar may still mark an already completed match as
+            # Live. Preserve its confirmed final status from the last daily
+            # response, but accept a newer calendar's own final result.
+            by_id = {str(item.get("id")): item for item in calendar}
+            stable = [item for item in self._data["fixtures"]
+                      if item.get("state") in ("in", "post") and
+                      by_id.get(str(item.get("id")), {}).get("state") != "post"]
+            return merge_fixtures(calendar, stable)
+        return merge_fixtures(calendar, daily)
+
+    async def _poll_live_events(self, fixtures: list[dict]) -> None:
+        """Fetch ESPN keyEvents after refresh, never blocking the coordinator.
+
+        A bounded rotation avoids burst requests when a competition has many
+        simultaneous games. All panels receive the same HA bus events; no
+        device opens a second ESPN event poll.
+        """
+        candidates = [item for item in fixtures if isinstance(item, dict)
+                      and item.get("state") == "in" and str(item.get("id", "")).isdigit()]
+        if not candidates or self._live_events_stopped:
+            return
+        cap = min(len(candidates), 8)
+        start = self._live_event_cursor % len(candidates)
+        selection = (candidates + candidates)[start:start + cap]
+        self._live_event_cursor = (start + cap) % len(candidates)
+        limit = asyncio.Semaphore(2)
+
+        async def inspect(fixture: dict) -> None:
+            async with limit:
+                if self._live_events_stopped:
+                    return
+                try:
+                    summary = await self.provider.summary(str(fixture["id"]))
+                    fresh_fixture = fixture_score_from_summary(fixture, summary)
+                    for event in self._live_event_tracker.update(fresh_fixture, summary):
+                        if self._live_events_stopped:
+                            return
+                        self.hass.bus.async_fire("football_news_live_event", event)
+                        _LOGGER.info("Football News Live event league=%s match=%s type=%s minute=%s",
+                                     self.provider.league, fixture["id"], event["type"],
+                                     event["minute"] or "unknown")
+                except Exception as err:
+                    # Provider cooldown handles 429s and transient connection
+                    # errors. Never lose the last-good scoreboard on a timeline
+                    # failure, or create a busy retry loop.
+                    _LOGGER.debug("Football News Live timeline unavailable league=%s match=%s error=%s",
+                                  self.provider.league, fixture["id"], type(err).__name__)
+
+        await asyncio.gather(*(inspect(item) for item in selection))
+
+    def _schedule_live_events(self, fixtures: list[dict]) -> None:
+        if (self._live_events_stopped or self._poll_plan.mode != "live" or
+                not callable(getattr(self.provider, "summary", None)) or
+                not any(item.get("state") == "in" for item in fixtures)):
+            return
+        if self._live_event_task and not self._live_event_task.done():
+            return
+        self._live_event_task = self.hass.async_create_task(self._poll_live_events(fixtures))
+
+    async def async_stop_live_events(self) -> None:
+        """Do not fire events from a coordinator after its entry unloads."""
+        self._live_events_stopped = True
+        task = self._live_event_task
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
     async def _async_update_data(self) -> dict[str, Any]:
         """ESPN refresh runs after startup; last-good datasets survive errors."""
         await self.async_restore_cache()
+        old_plan = self._poll_plan
+        self._poll_plan = self._choose_plan(self._data["fixtures"])
         tasks = {
-            "fixtures": self.provider.fixtures(),
+            "fixtures": self._refresh_fixtures(self._poll_plan),
             "standings": self.provider.standings(),
             "news": self.provider.news(),
         }
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        failures, updated = [], []
+        failures, updated, changed = [], [], []
         for name, result in zip(tasks, results, strict=True):
             if isinstance(result, Exception):
                 self._empty_streak[name] = 0
@@ -173,6 +315,10 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         failures.append(f"{name}: empty ESPN response; retaining last-good data until confirmed")
                         continue
                 self._empty_streak[name] = 0
+                if result != self._data[name]:
+                    changed.append(name)
+                    if name == "fixtures":
+                        self._log_score_changes(self._data[name], result)
                 self._data[name] = result
                 self._dataset_updates[name] = datetime.now(timezone.utc)
                 self._restored_datasets.discard(name)
@@ -196,20 +342,31 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._error_log_signature = ()
         if failures and not self._dataset_updates:
             raise UpdateFailed("All upstream datasets are unavailable")
-        active = any(item.get("state") == "in" for item in self._data["fixtures"])
-        self.update_interval = timedelta(seconds=60 if active else 300)
+        self._poll_plan = self._choose_plan(self._data["fixtures"])
+        self.update_interval = timedelta(seconds=self._poll_plan.seconds)
+        self._last_visible_change = bool(changed)
+        if "fixtures" in updated:
+            self._schedule_live_events(self._data["fixtures"])
         result = self._snapshot(failures[:3])
-        if updated:
+        # Live score may be checked every 15-20s. Avoid a disk write and a
+        # duplicate goal notification every time ESPN returns identical data.
+        if updated and (changed or monotonic() - self._last_persisted_at >= 300):
             self._persist()
-        _LOGGER.debug("Refresh %s: %d fixtures, %d standings, %d news; updated=%s; disk=%s live=%s",
+            self._last_persisted_at = monotonic()
+        if old_plan.mode != self._poll_plan.mode:
+            _LOGGER.info("Football News polling league=%s mode=%s -> %s interval=%ss days=%s",
+                         self.provider.league, old_plan.mode, self._poll_plan.mode,
+                         self._poll_plan.seconds, ",".join(self._poll_plan.days) or "none")
+        _LOGGER.debug("Refresh %s: %d fixtures, %d standings, %d news; updated=%s changed=%s; cache=%s polling=%s/%ss",
                       self.provider.league, len(result["fixtures"]), len(result["standings"]),
-                      len(result["news"]), ",".join(updated),
-                      ",".join(sorted(self._restored_datasets)), active)
-        if self.notifier is not None and ("fixtures" in updated or "news" in updated):
+                      len(result["news"]), ",".join(updated), ",".join(changed),
+                      ",".join(sorted(self._restored_datasets)),
+                      self._poll_plan.mode, self._poll_plan.seconds)
+        if self.notifier is not None and ("fixtures" in changed or "news" in changed):
             # Keep the notification pipeline working through partial ESPN
             # outages, but never dispatch old fixtures/news loaded from disk.
             notifications = {**result,
-                             "fixtures": result["fixtures"] if "fixtures" in updated else [],
-                             "news": result["news"] if "news" in updated else []}
+                             "fixtures": result["fixtures"] if "fixtures" in changed else [],
+                             "news": result["news"] if "news" in changed else []}
             self.hass.async_create_task(self.notifier.process(notifications))
         return result

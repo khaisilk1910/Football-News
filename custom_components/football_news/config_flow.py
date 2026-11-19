@@ -97,6 +97,11 @@ class FootballNewsOptionsFlow(config_entries.OptionsFlow):
                 options_list.append({"value": str(old_id), "label": f"Đã lưu · ID {old_id}"})
         return vol.Schema({
             vol.Required("locale", default=options["locale"]): vol.In({"vi": "Tiếng Việt", "en": "English"}),
+            vol.Required("live_refresh_seconds", default=options["live_refresh_seconds"]): vol.In({
+                15: "15 s · Fastest (more ESPN requests)",
+                20: "20 s · Recommended",
+                30: "30 s", 45: "45 s", 60: "60 s · Economy",
+            }),
             vol.Optional("zalo_team_ids", default=options["zalo_team_ids"]): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=options_list,

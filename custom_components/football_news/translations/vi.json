@@ -20,6 +20,7 @@
         "title": "Football News · Cài đặt và thông báo Zalo",
         "description": "Tùy chọn của giải đấu này. Khi mở cài đặt, Football News tải danh sách đội để bạn chọn nhiều đội theo ID; không tải danh sách này khi khởi động Home Assistant. Để trống lựa chọn đội để nhận mọi trận của giải. Yêu cầu cài Zalo Bot và bật Markdown để hiển thị tin định dạng đẹp. Giữ ID người nhận và nhóm ở dạng chuỗi. Nếu ESPN không trả danh sách đội, lựa chọn đã lưu vẫn được giữ lại. Dữ liệu cầu thủ chỉ sử dụng ESPN.",
         "data": {
+          "live_refresh_seconds": "Chu kỳ làm mới tỷ số khi trận đang Live",
           "locale": "Ngôn ngữ dashboard",
           "zalo_enabled": "Bật thông báo Zalo",
           "zalo_account": "Tài khoản gửi của Zalo Bot (account_selection)",

@@ -1,4 +1,4 @@
-/* Football News v2026.11.19.1 — HA-server-backed data and UI preferences. */
+/* Football News v2026.11.19.4 - HA-wide Live goal and card popups. */
 const FN_WORDS = {
   vi: {
     live:'Trực tiếp',fixtures:'Lịch thi đấu',results:'Kết quả',table:'Bảng xếp hạng',news:'Tin tức',overview:'Tổng quan',
@@ -35,6 +35,8 @@ Object.assign(FN_WORDS.vi,{topYellowCards:'Thẻ vàng nhiều nhất',topRedCar
 Object.assign(FN_WORDS.en,{topYellowCards:'Most yellow cards',topRedCards:'Most red cards',topRatings:'Highest ratings',topAppearances:'Most appearances',topMinutes:'Most minutes played',foundedYear:'Founded',homeStadium:'Home ground',clubOverview:'Club profile',
   notProvided:'Not provided by the source',playerPosition:'Position',shirtNumber:'Shirt',firstTeam:'Squad',
   matchSummary:'Match summary',goalsLabel:'goals',teamInfo:'Team information',location:'Location',eventsUnavailable:'No match events published'});
+Object.assign(FN_WORDS.vi,{"liveGoal":"B\u00c0N TH\u1eaeNG!","liveYellow":"TH\u1eba V\u00c0NG","liveRed":"TH\u1eba \u0110\u1ece","liveUnknown":"Ch\u01b0a r\u00f5 c\u1ea7u th\u1ee7","liveMinute":"Ph\u00fat","liveDetails":"Xem di\u1ec5n bi\u1ebfn","liveEventTeam":"\u0110\u1ed9i b\u00f3ng","liveUpdates":"Di\u1ec5n bi\u1ebfn tr\u1eadn Live"});
+Object.assign(FN_WORDS.en,{"liveGoal":"GOAL!","liveYellow":"YELLOW CARD","liveRed":"RED CARD","liveUnknown":"Player not available","liveMinute":"Minute","liveDetails":"Match details","liveEventTeam":"Team","liveUpdates":"Live match events"});
 const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ts = s => {const n = Date.parse(s || ''); return Number.isFinite(n) ? n : 0;};
 const alive = x => x && typeof x === 'object' ? x : {};
@@ -452,6 +454,8 @@ class FootballNewsPanel extends HTMLElement {
     this._emptySince = 0;
     this._retryCount = 0;
     this._retryTimer = null;
+    this._matchDetailPending = false;
+    this._matchWasLiveAt = 0;
     this.locale = FN_WORDS[this.data.language] ? this.data.language : 'vi';
     this.leaderCache = {}; // HA coordinator persists leader data centrally.
     this.teamCache = {};
@@ -477,6 +481,11 @@ class FootballNewsPanel extends HTMLElement {
     this._toastActive = new Map();
     this._toastSeen = new Set();
     this._toastTimer = null;
+    this._liveActive = new Map();
+    this._liveQueue = [];
+    this._liveSeen = new Set();
+    this._liveTimer = null;
+    this._onLiveEvent = event => this.receiveLiveEvent(event?.data);
     this.savingFavourite = false;
     this._hass = null;
     this._onVisibility = () => {if (!document.hidden) void this.load();};
@@ -575,8 +584,8 @@ class FootballNewsPanel extends HTMLElement {
         this._subscribedConnection === connection) return;
     this.unsubscribeSharedUpdates();
     this._subscribedConnection=connection;
-    for (const type of ['football_news_preferences_updated','football_news_ui_state_updated','football_news_data_updated','football_news_leaders_updated']) {
-      Promise.resolve(connection.subscribeEvents(type==='football_news_leaders_updated'?this._onLeadersUpdated:this._onSharedUpdate,type)).then(unsubscribe => {
+    for (const type of ['football_news_preferences_updated','football_news_ui_state_updated','football_news_data_updated','football_news_leaders_updated','football_news_live_event']) {
+      Promise.resolve(connection.subscribeEvents(type==='football_news_live_event'?this._onLiveEvent:(type==='football_news_leaders_updated'?this._onLeadersUpdated:this._onSharedUpdate),type)).then(unsubscribe => {
         if (this._subscribedConnection === connection && this.isConnected) {
           if (typeof unsubscribe === 'function') this._subscriptions.push(unsubscribe);
         } else if (typeof unsubscribe === 'function') unsubscribe();
@@ -608,6 +617,41 @@ class FootballNewsPanel extends HTMLElement {
       // instead of leaving a blank panel until the user navigates away.
       if (!this._hass) this.scheduleRetry();
     }, delay);
+  }
+  async refreshLiveMatchDetail() {
+    const current = this.modal;
+    if (!this.isConnected || document.hidden || this._matchDetailPending ||
+        current?.type !== 'match' || !current.id || current.loading || !this._hass) return;
+    const fixture = this.merged().fixtures.find(f => f.id === current.id && f.league === current.league);
+    const kickoff = ts(fixture?.kickoff);
+    const age = kickoff ? Date.now() - kickoff : 0;
+    const live = (fixture?.state === 'in' && (!kickoff || age < 21600000)) ||
+      (fixture?.state === 'pre' && kickoff && age >= -120000 && age < 10800000);
+    if (live) this._matchWasLiveAt = Date.now();
+    // Keep the final event timeline fresh for five minutes after FT, but do
+    // not repeatedly fetch historical match details just because a modal is open.
+    if (!live && (!this._matchWasLiveAt || Date.now() - this._matchWasLiveAt > 300000)) return;
+    this._matchDetailPending = true;
+    try {
+      const fresh = await this.request({type:'football_news/match',
+        event_id:current.id,league:current.league});
+      if (!this.isConnected || this.modal?.type !== 'match' ||
+          this.modal.id !== current.id || this.modal.league !== current.league) return;
+      const next = {type:'match',id:current.id,league:current.league,...alive(fresh)};
+      if (JSON.stringify(next) !== JSON.stringify(this.modal)) {
+        const scroll = this.shadowRoot.querySelector('.modal-scroll');
+        const position = scroll?.scrollTop || 0;
+        this.modal = next;
+        this.render();
+        const updated = this.shadowRoot.querySelector('.modal-scroll');
+        if (updated) updated.scrollTop = position;
+      }
+    } catch (error) {
+      // Preserve last-good detail; HA/ESPN may be temporarily rate-limited.
+      console.debug('[Football News] Live detail retry failed',String(error?.message || error));
+    } finally {
+      this._matchDetailPending = false;
+    }
   }
   foldName(value) {
     return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
@@ -672,6 +716,7 @@ class FootballNewsPanel extends HTMLElement {
     this.tab=tab;
     this.roundIndex=null;
     this.modal=null;
+    this._matchWasLiveAt = 0;
     if (tab === 'clubs' && this.selectedLeague === 'all' && this.leagues().length)
       this.selectedLeague=this.leagues()[0].league_code;
     void this.saveUIState({tab:this.tab,league:this.selectedLeague});this.render();
@@ -733,13 +778,17 @@ class FootballNewsPanel extends HTMLElement {
       // Once complete keep the dashboard fresh without leaving the page.
       if (hydrating || Date.now()-this._last>(hasLive?25000:60000)) void this.load();
     }, 5000);
+    this._matchDetailTimer = setInterval(() => {void this.refreshLiveMatchDetail();}, 15000);
   }
   disconnectedCallback() {
     this.unsubscribeSharedUpdates();
     clearInterval(this._timer);
+    clearInterval(this._matchDetailTimer);
     if (this._retryTimer) clearTimeout(this._retryTimer);
     if (this._toastTimer) clearTimeout(this._toastTimer);
+    if (this._liveTimer) clearTimeout(this._liveTimer);
     this._toastTimer = null;
+    this._liveTimer = null;
     this._retryTimer=null;
     document.removeEventListener?.('visibilitychange', this._onVisibility);
     if (typeof window !== 'undefined') {
@@ -938,6 +987,11 @@ class FootballNewsPanel extends HTMLElement {
     for(let i=0;i<queue.length;i+=2)await Promise.all(queue.slice(i,i+2).map(read));
   }
   async _click(event) {
+    const dismissLive = event.target.closest?.('[data-live-dismiss]');
+    if (dismissLive?.dataset?.liveDismiss !== undefined) {
+      this.dismissLivePopup(dismissLive.dataset.liveDismiss);
+      return;
+    }
     const dismissToast = event.target.closest?.('[data-toast-dismiss]');
     if (dismissToast?.dataset?.toastDismiss !== undefined) {
       this.dismissToast(dismissToast.dataset.toastDismiss);
@@ -956,7 +1010,7 @@ class FootballNewsPanel extends HTMLElement {
     }
     const close = event.target.closest('[data-close]');
     if (close && (close === event.target || close.classList.contains('modal-close'))) {
-      this.modal = null; this.render(); return;
+      this.modal = null; this._matchWasLiveAt = 0; this.render(); return;
     }
     const element = event.target.closest('[data-menu],[data-open-clubs],[data-reload-leagues],[data-tab],[data-league],[data-club],[data-match-star],[data-detail],[data-club-detail],[data-refresh],[data-sound],[data-month-fetch],[data-month-more],[data-round-prev],[data-round-next],[data-quick-setup],[data-team-load]');
     if (!element) return;
@@ -1064,6 +1118,9 @@ class FootballNewsPanel extends HTMLElement {
     }
     if (data.detail) {
       const id=data.detail, league=data.fixtureLeague;
+      this._matchWasLiveAt = 0;
+      const opening=this.merged().fixtures.find(f=>f.id===id && f.league===league);
+      if (opening?.state==='in') this._matchWasLiveAt=Date.now();
       this.modal={type:'match',loading:true,id,league};this.render();
       try {
         const result=await this.request({type:'football_news/match',event_id:id,league});
@@ -1357,7 +1414,7 @@ class FootballNewsPanel extends HTMLElement {
         (m.officials||[]).map(o=>o.name).filter(Boolean).join(', ')].filter(Boolean);
       const events=(m.events||[]).map((event,index)=>{
         const kind=event.kind||'';
-        const symbol=kind==='goal'?'⚽':kind==='card'?'🟨':kind==='substitution'?'🔁':kind==='start'?'▶':'•';
+        const symbol=kind==='red_card'?'&#x1F7E5;':kind==='goal'?'⚽':kind==='card'?'🟨':kind==='substitution'?'🔁':kind==='start'?'▶':'•';
         return `<article class="event-item ${esc(kind)}">
           <div class="event-time">${esc(event.minute||'–')}</div>
           <div class="event-badge">${symbol}</div>
@@ -1377,6 +1434,88 @@ class FootballNewsPanel extends HTMLElement {
     return `<div class="modal-mask" data-close><div class="modal-body" role="dialog" aria-modal="true" aria-label="${esc(title)}">
       <div class="modal-head"><h3>${m.type==='club'?'🏟':'⚽'} ${esc(title)}</h3><button class="modal-close" data-close>${this.t('close')} ×</button></div>
       <div class="modal-scroll">${contents}</div></div></div>`;
+  }
+  receiveLiveEvent(payload) {
+    // A single HA WebSocket bus serves every Football News view, even when
+    // the active tab/league is different. No browser-side ESPN polling.
+    const data = alive(payload);
+    if (!this.isConnected || !['goal','yellow','red'].includes(data.type) ||
+        typeof data.event_key !== 'string' || !data.event_key ||
+        !data.event_id || !data.league || this._liveSeen.has(data.event_key)) return;
+    const published = ts(data.published_at);
+    // HA events are not replayed on subscription. Allow for mobile clock
+    // skew while still dropping exceptionally old upstream timestamps.
+    if (published && Math.abs(Date.now() - published) > 6*3600000) return;
+    this._liveSeen.add(data.event_key);
+    if (this._liveSeen.size > 400) this._liveSeen.delete(this._liveSeen.values().next().value);
+    this._liveQueue.push(data);
+    this.fillLiveQueue();
+    this.scheduleLiveExpiry();
+    this.paintToasts();
+  }
+  fillLiveQueue() {
+    // Keep three readable cards on mobile; queue additional simultaneous
+    // match events instead of discarding them as the viewport fills.
+    while (this._liveActive.size < 3 && this._liveQueue.length) {
+      const next=this._liveQueue.shift();
+      this._liveActive.set(next.event_key,{...next,expiresAt:Date.now()+24000});
+    }
+  }
+  dismissLivePopup(key) {
+    this._liveActive.delete(key);
+    this.fillLiveQueue();
+    this.paintToasts();
+    this.scheduleLiveExpiry();
+  }
+  scheduleLiveExpiry() {
+    if (this._liveTimer) clearTimeout(this._liveTimer);
+    this._liveTimer = null;
+    if (!this.isConnected || !this._liveActive.size || typeof setTimeout !== 'function') return;
+    const expiresAt = Math.min(...[...this._liveActive.values()].map(x=>x.expiresAt));
+    this._liveTimer = setTimeout(() => {
+      this._liveTimer=null;
+      const now = Date.now();
+      for (const [key,item] of this._liveActive) {
+        if (item.expiresAt <= now) this._liveActive.delete(key);
+      }
+      this.fillLiveQueue();
+      this.paintToasts();
+      this.scheduleLiveExpiry();
+    },Math.max(1,expiresAt-Date.now()));
+  }
+  livePopupMarkup() {
+    if (!this._liveActive.size) return '';
+    const safeLogo = source => typeof source === 'string' && /^https:\/\/[^\s"'<>]+$/.test(source) ? source : '';
+    const clubMarkup = side => {
+      const name=String(side?.name || this.t('team'));
+      const logo=safeLogo(side?.logo);
+      return `<div class="fn-live-club">${logo?`<img src="${esc(logo)}" alt="" loading="lazy" decoding="async">`:
+        `<span class="fn-live-crest-fallback" aria-hidden="true">${esc(name.slice(0,1))}</span>`}
+        <span title="${esc(name)}">${esc(name)}</span></div>`;
+    };
+    const score = x => Number.isInteger(x) && x >= 0 ? String(x) : '-';
+    return [...this._liveActive.values()].reverse().map(item => {
+      const type=item.type;
+      const label=type==='goal'?this.t('liveGoal'):type==='yellow'?this.t('liveYellow'):this.t('liveRed');
+      const symbol=type==='goal'?'&#9917;':type==='yellow'?'&#x1F7E8;':'&#x1F7E5;';
+      const minute=String(item.minute || '').slice(0,18);
+      const team=String(item.team || '').slice(0,120);
+      const player=String(item.player || this.t('liveUnknown')).slice(0,150);
+      return `<section class="fn-live-popup fn-live-popup--${type}" role="status" aria-label="${esc(label)}">
+        <div class="fn-live-head"><span class="fn-live-pill"><i aria-hidden="true"></i> LIVE &nbsp; ${esc(label)}</span>
+          ${minute?`<span class="fn-live-minute">${esc(minute)}</span>`:''}
+          <button type="button" class="fn-live-close" data-live-dismiss="${esc(item.event_key)}" aria-label="${esc(this.t('close'))}">&#215;</button></div>
+        <div class="fn-live-match">
+          ${clubMarkup(alive(item.home))}
+          <div class="fn-live-score"><b>${score(item.home?.score)} <span>:</span> ${score(item.away?.score)}</b><small>LIVE SCORE</small></div>
+          ${clubMarkup(alive(item.away))}
+        </div>
+        <div class="fn-live-player"><span class="fn-live-event-icon" aria-hidden="true">${symbol}</span>
+          <div><strong>${esc(player)}</strong><small>${esc(team || this.t('liveEventTeam'))}${minute?' &nbsp; &bull; &nbsp; '+esc(minute):''}</small></div></div>
+        <div class="fn-live-foot"><span>${esc(item.league_name || item.league)}</span>
+          <button type="button" data-detail="${esc(item.event_id)}" data-fixture-league="${esc(item.league)}">${esc(this.t('liveDetails'))} &#8594;</button></div>
+      </section>`;
+    }).join('');
   }
   syncToasts(statuses) {
     const now = Date.now();
@@ -1419,7 +1558,7 @@ class FootballNewsPanel extends HTMLElement {
   }
   paintToasts() {
     const stage = this.shadowRoot.querySelector?.('[data-toast-stage]');
-    if (stage) stage.innerHTML = this.toastMarkup();
+    if (stage) stage.innerHTML = this.livePopupMarkup() + this.toastMarkup();
   }
   toastMarkup() {
     if (!this._toastActive.size) return '';
@@ -1483,7 +1622,7 @@ class FootballNewsPanel extends HTMLElement {
     const existing = this.shadowRoot.querySelector?.('.app');
     // Simple ShadowRoot mocks in the existing unit suite have no DOM parser.
     if (!existing || typeof document === 'undefined' || typeof document.createElement !== 'function') {
-      const styles = `${STYLE}${MORE_STYLE}${UI_V8_STYLE}${PREVIEW_STYLE}${ROUND_STYLE}${V12_STYLE}${V13_STYLE}${LEADER_LAYOUT_STYLES}${V18_BADGE_STYLES}${V19_RESPONSIVE_LEADERS}${V20_HEADING_STYLES}${FN_V23_DESIGN_STYLES}${FN_V24_FULL_REDESIGN_STYLES}${FN_V26_POLISH}${FN_V27_LAYOUT_POLISH}${FN_V29_LAYOUT_POLISH}${FN_V31_FIXTURE_POSTER}${FN_V32_TOAST_COMPACT}${FN_V33_INTERACTION_STYLES}`;
+      const styles = `${STYLE}${MORE_STYLE}${UI_V8_STYLE}${PREVIEW_STYLE}${ROUND_STYLE}${V12_STYLE}${V13_STYLE}${LEADER_LAYOUT_STYLES}${V18_BADGE_STYLES}${V19_RESPONSIVE_LEADERS}${V20_HEADING_STYLES}${FN_V23_DESIGN_STYLES}${FN_V24_FULL_REDESIGN_STYLES}${FN_V26_POLISH}${FN_V27_LAYOUT_POLISH}${FN_V29_LAYOUT_POLISH}${FN_V31_FIXTURE_POSTER}${FN_V32_TOAST_COMPACT}${FN_V33_INTERACTION_STYLES}${FN_LIVE_POPUP_STYLES}`;
       this.shadowRoot.innerHTML = `<style>${styles}</style>${markup}`;
       this._renderedView = `${this.tab}|${this.selectedLeague}`;
       this._renderedModal = this.modal ? `${this.modal.type}|${this.modal.id||this.modal.team_id||''}` : '';
@@ -1648,7 +1787,7 @@ class FootballNewsPanel extends HTMLElement {
             <div class="stadium-rail-status"><i aria-hidden="true"></i><span>ESPN</span></div>
           </aside>
           <div class="stadium-workspace">
-            <div class="fn-toast-stage" data-toast-stage aria-label="${esc(this.locale==='vi'?'Thông báo Football News':'Football News notifications')}">${this.toastMarkup()}</div>
+            <div class="fn-toast-stage" data-toast-stage aria-label="${esc(this.locale==='vi'?'Thông báo Football News':'Football News notifications')}">${this.livePopupMarkup()}${this.toastMarkup()}</div>
             <header class="ha-toolbar">
               <div class="toolbar-brand">
                 <button class="menu-button" data-menu title="${this.t('openSidebar')}" aria-label="${this.t('openSidebar')}">☰</button>
@@ -2137,6 +2276,76 @@ const FN_V33_INTERACTION_STYLES = `
   .app select,.app button {min-height:40px}
   .app .tablewrap {scrollbar-width:thin}
 }
+`;
+
+/* Global in-panel Live alerts for every Football News view. */
+const FN_LIVE_POPUP_STYLES = `
+.app .fn-live-popup {
+  --live-color:#c58bff;position:relative;flex:0 0 auto;min-width:0;
+  overflow:hidden;isolation:isolate;padding:13px 14px 12px;
+  border:1px solid color-mix(in srgb,var(--live-color) 74%,#fff 10%);
+  border-radius:18px;color:#f6f6ff;
+  background:radial-gradient(ellipse at 85% 2%,color-mix(in srgb,var(--live-color) 19%,transparent),transparent 64%),linear-gradient(140deg,#182147,#080f27 78%);
+  box-shadow:0 15px 42px #000b,0 0 24px color-mix(in srgb,var(--live-color) 23%,transparent),inset 0 1px 0 #ffffff24;
+  backdrop-filter:blur(18px);pointer-events:auto;
+  animation:fn-live-appear .36s cubic-bezier(.2,.8,.2,1) both;
+}
+.app .fn-live-popup--goal{--live-color:#63f3b2}
+.app .fn-live-popup--yellow{--live-color:#fbd353}
+.app .fn-live-popup--red{--live-color:#ff6879}
+.app .fn-live-popup::before{content:'';position:absolute;inset:0 0 auto;height:3px;
+  background:linear-gradient(90deg,var(--live-color),#ffffff88,transparent)}
+.app .fn-live-head{display:flex;align-items:center;gap:8px;min-height:27px}
+.app .fn-live-pill{color:var(--live-color);font-size:10px;font-weight:900;letter-spacing:1.2px;
+  display:inline-flex;align-items:center;gap:7px;min-width:0}
+.app .fn-live-pill i{width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:var(--live-color);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--live-color) 18%,transparent),0 0 12px var(--live-color)}
+.app .fn-live-minute{font-size:13px;color:#e7ebff;font-weight:850;margin-left:auto}
+.app .fn-live-close{width:27px;height:27px;flex:0 0 27px;min-height:27px;margin-left:auto;
+  display:grid;place-items:center;border-radius:9px;border:1px solid #ffffff36;
+  color:#f6f7ff;background:#ffffff10;font-size:21px;line-height:1;padding:0}
+.app .fn-live-minute+.fn-live-close{margin-left:0}
+.app .fn-live-close:hover{border-color:#fff;background:#ffffff2b}
+.app .fn-live-match{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  gap:9px;align-items:center;margin:9px 0 12px}
+.app .fn-live-club{display:flex;flex-direction:column;align-items:center;gap:5px;
+  min-width:0;text-align:center;color:#f3f3ff;font-size:12px;font-weight:800;line-height:1.2}
+.app .fn-live-club img{width:49px;height:49px;object-fit:contain;filter:drop-shadow(0 5px 10px #0008)}
+.app .fn-live-club>span:last-child{overflow:hidden;text-overflow:ellipsis;max-width:100%;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-clamp:2}
+.app .fn-live-crest-fallback{width:49px;height:49px;border-radius:13px;background:#ffffff17;
+  display:grid;place-items:center;font-size:22px;color:#e1e5ff}
+.app .fn-live-score{text-align:center;min-width:86px;line-height:1.13}
+.app .fn-live-score b{display:block;font-size:clamp(25px,3vw,33px);white-space:nowrap;
+  font-weight:950;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:-1.1px}
+.app .fn-live-score b span{color:var(--live-color)}
+.app .fn-live-score small{font-size:9px;letter-spacing:1.6px;color:#b5c3e7;font-weight:850}
+.app .fn-live-player{display:flex;align-items:center;gap:12px;padding:12px;
+  background:color-mix(in srgb,var(--live-color) 9%,#0d1836);
+  border:1px solid color-mix(in srgb,var(--live-color) 28%,transparent);border-radius:12px}
+.app .fn-live-event-icon{font-size:27px;line-height:1;flex:0 0 32px;text-align:center}
+.app .fn-live-player>div{min-width:0;overflow-wrap:anywhere}
+.app .fn-live-player strong{display:block;font-weight:900;font-size:16px;color:#fff;line-height:1.3}
+.app .fn-live-player small{display:block;margin-top:2px;font-size:11px;color:#cbd5ed;font-weight:650}
+.app .fn-live-foot{display:flex;align-items:center;justify-content:space-between;
+  gap:8px;margin-top:9px;color:#a9b6d5;font-weight:700;font-size:10px}
+.app .fn-live-foot>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app .fn-live-foot button{border:0;background:transparent;color:var(--live-color);
+  font-size:11px;font-weight:850;padding:5px 0;white-space:nowrap}
+.app .fn-live-foot button:hover{text-decoration:underline}
+@keyframes fn-live-appear{from{opacity:0;transform:translateY(-15px) scale(.96)}
+  to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:550px){
+  .app .fn-live-popup{padding:10px 11px;border-radius:15px}
+  .app .fn-live-match{margin:7px 0;gap:5px}
+  .app .fn-live-club img,.app .fn-live-crest-fallback{width:39px;height:39px}
+  .app .fn-live-club{font-size:11px}
+  .app .fn-live-score{min-width:73px}
+  .app .fn-live-score b{font-size:26px}
+  .app .fn-live-player{padding:9px}
+  .app .fn-live-player strong{font-size:14px}
+}
+@media(prefers-reduced-motion:reduce){.app .fn-live-popup{animation:none}}
 `;
 
 if(!customElements.get('football-news-panel')) customElements.define('football-news-panel',FootballNewsPanel);

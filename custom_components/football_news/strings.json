@@ -20,6 +20,7 @@
         "title": "Football News · Settings and Zalo notifications",
         "description": "Select any number of teams to receive Zalo match alerts for this competition. Empty means all teams. Team directory loads only when opening settings; Zalo Bot must be configured separately. Player statistics are retrieved from ESPN only.",
         "data": {
+          "live_refresh_seconds": "Live score polling interval (when a match is in progress)",
           "locale": "Dashboard language",
           "zalo_enabled": "Enable Zalo notifications",
           "zalo_account": "Zalo Bot sender (account_selection)",

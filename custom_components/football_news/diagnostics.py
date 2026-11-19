@@ -22,5 +22,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
         "dataset_counts": {key: len(data.get(key, [])) for key in ("fixtures", "standings", "news")},
         "last_successful_updates": data.get("updated_at", {}),
         "disk_cache": data.get("cache_info", {}),
+        "adaptive_refresh": data.get("refresh_policy", {
+            "mode": "startup", "seconds": 300, "focused_days": []}),
+        "live_refresh_seconds_setting": entry.options.get("live_refresh_seconds", 20),
         "errors": [str(x)[:200] for x in (runtime["coordinator"]._last_errors if runtime else [])][:3],
     }

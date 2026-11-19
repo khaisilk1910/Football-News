@@ -290,6 +290,7 @@ def normalize_summary(payload: dict) -> dict:
             event_name = _text(event_type.get("text") or event_type.get("name") or
                                event_type.get("displayName") or event.get("typeText")).casefold()
             kind = ("goal" if "goal" in event_name else
+                    "red_card" if "red card" in event_name or "second yellow" in event_name or "2nd yellow" in event_name else
                     "card" if "card" in event_name else
                     "substitution" if "substitution" in event_name else
                     "start" if "start" in event_name or "kickoff" in event_name else "")

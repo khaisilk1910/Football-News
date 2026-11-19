@@ -586,7 +586,8 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     def broadcast_updated_data() -> None:
         # Emitted *after* coordinator data changes, never during ESPN fetch.
         # Other devices then read the same authoritative HA snapshot.
-        hass.bus.async_fire(f"{DOMAIN}_data_updated", {"league": league})
+        if coordinator._last_visible_change:
+            hass.bus.async_fire(f"{DOMAIN}_data_updated", {"league": league})
 
     entry.async_on_unload(coordinator.async_add_listener(broadcast_updated_data))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -613,5 +614,7 @@ async def async_update_options(hass: HomeAssistant, entry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
-        hass.data.get(DOMAIN, {}).get("entries", {}).pop(entry.entry_id, None)
+        runtime = hass.data.get(DOMAIN, {}).get("entries", {}).pop(entry.entry_id, None)
+        if runtime is not None:
+            await runtime["coordinator"].async_stop_live_events()
     return unloaded

@@ -20,6 +20,7 @@
         "title": "Football News · Settings and Zalo notifications",
         "description": "Options for this competition. When you open settings, Football News loads its team directory so you can select multiple teams by ID. Leave the selection empty to receive all matches in this competition. Install Zalo Bot and enable Markdown for rich formatting. Keep recipient/group IDs as text. Saved selections remain available if the ESPN team directory is offline. Player statistics are retrieved from ESPN only.",
         "data": {
+          "live_refresh_seconds": "Live score refresh interval (seconds)",
           "locale": "Dashboard language",
           "zalo_enabled": "Enable Zalo notifications",
           "zalo_account": "Zalo Bot sender (account_selection)",

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 DOMAIN = "football_news"
-VERSION = "2026.11.19.2"
+VERSION = "2026.11.19.4"
 DEFAULT_LEAGUE = "eng.1"
 DEFAULT_REMINDER_MINUTES = 30
 API_ROOT = "https://site.api.espn.com/apis"
@@ -42,6 +42,7 @@ STARTER_LEAGUES = (
     "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "uefa.champions",
 )
 DEFAULT_OPTIONS = {
+    "live_refresh_seconds": 20,  # 15-60s during ESPN Live, one poll per HA league
     "locale": "vi",
     "team_filter": "",  # legacy single-name filter; superseded by IDs
     "zalo_team_ids": [],
