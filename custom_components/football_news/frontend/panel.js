@@ -595,12 +595,18 @@ class FootballNewsPanel extends HTMLElement {
   }
   scheduleRetry() {
     if (!this.isConnected || this._retryTimer || typeof setTimeout !== 'function') return;
-    // Never stop retrying a cold entry. Back off to 15 seconds while the page
-    // remains open, rather than requiring navigation out and back in.
+    // Home Assistant's companion app can report document.hidden during initial
+    // panel activation. A hidden but *empty* panel must still self-recover.
+    // Stop unnecessary background requests only after data is displayed.
     const delay = Math.min(15000, 650 * (2 ** Math.min(this._retryCount++, 5)));
     this._retryTimer=setTimeout(() => {
       this._retryTimer=null;
-      if (this.isConnected && !document.hidden) void this.load();
+      if (!this.isConnected) return;
+      if (!document.hidden || !this.leagues().length || this.error || this._registryPending)
+        void this.load();
+      // HA may mount the web component before assigning hass. Retry readiness
+      // instead of leaving a blank panel until the user navigates away.
+      if (!this._hass) this.scheduleRetry();
     }, delay);
   }
   foldName(value) {
@@ -682,6 +688,7 @@ class FootballNewsPanel extends HTMLElement {
     if(['leaders','table','overview'].includes(this.tab)) await this.loadLeaders(this.previewLeague()?.league_code);
   }
   set hass(hass) {
+    const firstAssignment = !this._hass && !!hass;
     const changed = !!this._hass && this._hass.connection !== hass?.connection;
     this._hass = hass;
     if (changed) {
@@ -690,10 +697,13 @@ class FootballNewsPanel extends HTMLElement {
       this._lastAttempt = 0;
     }
     if (this.isConnected) this.subscribeSharedUpdates();
-    // HA can assign hass after connectedCallback. Trigger immediately on
-    // first assignment or a new WebSocket connection, not after a tab switch.
+    // HA can assign hass *after* connectedCallback or replace the socket
+    // while a previous request is still awaiting its result. Never lose
+    // either transition because the in-flight loading mutex is held.
+    if (this.isConnected && this._loading && (firstAssignment || changed))
+      this._syncPending = true;
     if (this.isConnected && !this._loading &&
-        (changed || Date.now() - this._lastAttempt >
+        (firstAssignment || changed || Date.now() - this._lastAttempt >
         ((this._showingCached || this.error || !this.leagues().length) ? 3000 : 60000)))
       void this.load();
   }
@@ -701,7 +711,8 @@ class FootballNewsPanel extends HTMLElement {
   connectedCallback() {
     this.subscribeSharedUpdates();
     this.render();
-    void this.load();
+    if (this._hass) void this.load();
+    else this.scheduleRetry(); // HA can mount the panel before injecting hass.
     document.addEventListener?.('visibilitychange', this._onVisibility);
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this._onOnline);
@@ -710,8 +721,10 @@ class FootballNewsPanel extends HTMLElement {
     // Keep polling while native config entries are being installed, but avoid
     // frequent traffic once feeds become available (WS reads are HA-local).
     this._timer = setInterval(() => {
-      if (document.hidden || this._loading) return;
+      if (this._loading) return;
       const rows=this.leagues();
+      // Throttle a background *hydrated* dashboard, not the first empty view.
+      if (document.hidden && rows.length && !this.error && !this._registryPending) return;
       const hydrating=!rows.length || rows.some(l=>!l.ready || !l.runtime_loaded ||
         l.attempted === false || (l.cache_info?.restored_datasets||[]).length ||
         !['fixtures','standings','news'].some(k=>(l[k]||[]).length));
@@ -791,7 +804,9 @@ class FootballNewsPanel extends HTMLElement {
     finally {if (timer && typeof clearTimeout === 'function') clearTimeout(timer);}
   }
   async load() {
-    if (this._loading || !this._hass) return;
+    if (!this.isConnected) return;
+    if (this._loading) return;
+    if (!this._hass) { this.scheduleRetry(); return; }
     this._loading = true;
     this._lastAttempt = Date.now();
     try {
@@ -804,7 +819,8 @@ class FootballNewsPanel extends HTMLElement {
         this._emptyResponses++;
         if (!this._emptySince) this._emptySince = Date.now();
         const recentlyConfigured = this._registryEverReady && this.leagues().length;
-        const stillStarting = this._emptyResponses < 4 ||
+        const stillStarting = data.startup_pending === true ||
+          Number(data.configured_count) > 0 || this._emptyResponses < 4 ||
           Date.now() - this._emptySince < 9000;
         if (recentlyConfigured || stillStarting) {
           this._registryPending = true;

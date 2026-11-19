@@ -58,6 +58,16 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
     # is loading/retrying. The config-entry registry, not hass.data runtimes,
     # is the source of truth for the configured count.
     configured = list(hass.config_entries.async_entries(DOMAIN))
+    # On the first sidebar visit HA can still be restoring its config-entry
+    # registry. A bounded local wait only affects this WebSocket request, never
+    # Home Assistant startup; no ESPN/network request is made here.
+    startup_pending = not getattr(hass, "is_running", True)
+    if not configured and startup_pending:
+        for _ in range(4):
+            await asyncio.sleep(0.25)
+            configured = list(hass.config_entries.async_entries(DOMAIN))
+            if configured:
+                break
     runtimes = hass.data.get(DOMAIN, {}).get("entries", {})
     if not configured and runtimes:
         # A transient HA config-entry registry rehydration must not hide loaded
@@ -150,7 +160,8 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         "preferences": preferences,
         "ui_state": ui_state,
         "starter_leagues": [{"code": code, "name": LEAGUES[code]} for code in STARTER_LEAGUES],
-        "configured_count": len(leagues),
+        "configured_count": len(configured),
+        "startup_pending": startup_pending,
         "runtime_count": sum(1 for row in leagues if row["runtime_loaded"]),
         "admin": bool(connection.user and connection.user.is_admin),
     })
@@ -463,15 +474,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         StaticPathConfig("/football_news/panel.js", str(_ROOT / "frontend" / "panel.js"), False),
         StaticPathConfig("/football_news/icon.png", str(_ROOT / "brand" / "icon.png"), False),
     ])
-    await async_register_panel(
-        hass,
-        frontend_url_path="football-news",
-        webcomponent_name="football-news-panel",
-        sidebar_title="Football News",
-        sidebar_icon="mdi:soccer",
-        module_url=f"/football_news/assets/panel_entry.js?v={VERSION}",
-        require_admin=False,
-    )
     websocket_api.async_register_command(hass, ws_get_data)
     websocket_api.async_register_command(hass, ws_set_ui_state)
     websocket_api.async_register_command(hass, ws_quick_setup)
@@ -484,6 +486,16 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, ws_club_brief)
     websocket_api.async_register_command(hass, ws_toggle_favourite)
     websocket_api.async_register_command(hass, ws_set_favourite)
+    # Publish the sidebar only after every custom WS command is registered.
+    await async_register_panel(
+        hass,
+        frontend_url_path="football-news",
+        webcomponent_name="football-news-panel",
+        sidebar_title="Football News",
+        sidebar_icon="mdi:soccer",
+        module_url=f"/football_news/assets/panel_entry.js?v={VERSION}",
+        require_admin=False,
+    )
 
     async def refresh(call: ServiceCall):
         entry_id = call.data.get("entry_id", "")
@@ -563,6 +575,12 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     # Home Assistant's disk, never the network. The WebSocket cold-cache path
     # independently serves panels opened while this entry is still setting up.
     await coordinator.async_restore_cache()
+    # The first sidebar request may have arrived before this runtime was
+    # registered. Wake already-open clients as soon as disk hydration ends;
+    # do not wait for ESPN, entity platforms or a manual panel reload.
+    hass.bus.async_fire(f"{DOMAIN}_data_updated", {"league": league, "phase": "cache_ready"})
+    _LOGGER.debug("Football News initial cache ready league=%s entry_state=%s",
+                  league, entry.state)
 
     @callback
     def broadcast_updated_data() -> None:
