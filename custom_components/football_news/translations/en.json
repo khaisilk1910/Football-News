@@ -49,6 +49,9 @@
       "upcoming_matches": {
         "name": "Upcoming matches"
       },
+      "schedule_next_30_days": {
+        "name": "Next Round Fixtures"
+      },
       "news_articles": {
         "name": "News articles"
       },

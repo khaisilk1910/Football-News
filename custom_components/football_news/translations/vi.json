@@ -49,6 +49,9 @@
       "upcoming_matches": {
         "name": "Số trận sắp diễn ra"
       },
+      "schedule_next_30_days": {
+        "name": "Lịch thi đấu vòng tiếp theo"
+      },
       "news_articles": {
         "name": "Số tin tức"
       },
