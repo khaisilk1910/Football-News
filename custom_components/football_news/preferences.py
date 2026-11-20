@@ -6,7 +6,7 @@ from copy import deepcopy
 import logging
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
+from .const import DOMAIN, LEAGUES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class FootballPreferences:
             if isinstance(stored, dict):
                 for key in self._data:
                     if isinstance(stored.get(key), list):
-                        self._data[key] = stored[key][:100]
+                        self._data[key] = stored[key][:max(200, 5 * len(LEAGUES)) if key == "clubs" else 200]
             self._loaded = True
 
     async def _commit(self, previous: dict) -> None:
@@ -46,6 +46,8 @@ class FootballPreferences:
             raise
 
     async def toggle_club(self, league: str, team_id: str, name: str):
+        if league not in LEAGUES:
+            raise ValueError("Invalid league")
         if not team_id.isascii() or not team_id.isdigit() or len(team_id) > 16:
             raise ValueError("Invalid team ID")
         if len(name.strip()) > 100 or not name.strip():
@@ -57,8 +59,8 @@ class FootballPreferences:
             found = next((club for club in clubs if club["id"] == team_id and club["league"] == league), None)
             if found:
                 clubs.remove(found)
-            elif len(clubs) >= 5:
-                raise ValueError("Maximum 5 favourite clubs")
+            elif sum(club.get("league") == league for club in clubs) >= 5:
+                raise ValueError("Maximum 5 favourite clubs per league")
             else:
                 clubs.append({"league": league, "id": team_id, "name": name.strip()})
             await self._commit(previous)
@@ -67,6 +69,8 @@ class FootballPreferences:
 
     async def set_club(self, league: str, team_id: str, name: str, enabled: bool) -> dict:
         """Idempotent save: retries and double taps cannot unexpectedly unstar a club."""
+        if league not in LEAGUES:
+            raise ValueError("Invalid league")
         if not isinstance(team_id, str) or not team_id.isascii() or not team_id.isdigit() or len(team_id) > 16:
             raise ValueError("Invalid team ID")
         if enabled and (not isinstance(name, str) or not name.strip() or len(name.strip()) > 100):
@@ -78,8 +82,8 @@ class FootballPreferences:
             existing = next((club for club in clubs if club.get("id") == team_id and club.get("league") == league), None)
             changed = False
             if enabled and existing is None:
-                if len(clubs) >= 5:
-                    raise ValueError("Maximum 5 favourite clubs")
+                if sum(club.get("league") == league for club in clubs) >= 5:
+                    raise ValueError("Maximum 5 favourite clubs per league")
                 clubs.append({"league": league, "id": team_id, "name": name.strip()})
                 changed = True
             elif not enabled and existing is not None:

@@ -10,10 +10,12 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN, VERSION, LEAGUES
+from .voice_schedule import schedule_next_round
 
 DESCRIPTIONS = (
     SensorEntityDescription(key="live_matches", translation_key="live_matches", icon="mdi:soccer-field"),
     SensorEntityDescription(key="upcoming_matches", translation_key="upcoming_matches", icon="mdi:calendar-clock"),
+    SensorEntityDescription(key="schedule_next_30_days", translation_key="schedule_next_30_days", icon="mdi:calendar-month"),
     SensorEntityDescription(key="news_articles", translation_key="news_articles", icon="mdi:newspaper-variant-multiple"),
     SensorEntityDescription(key="favorite_clubs", translation_key="favorite_clubs", icon="mdi:star-circle"),
     SensorEntityDescription(key="next_kickoff", translation_key="next_kickoff", icon="mdi:calendar-start", device_class=SensorDeviceClass.TIMESTAMP),
@@ -34,6 +36,8 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, entry, description):
         super().__init__(coordinator)
         self.entity_description = description
+        self._league = coordinator.provider.league
+        self._league_name = LEAGUES.get(self._league, self._league)
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -58,20 +62,32 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
         """
         self.async_write_ha_state()
 
+    def _fixtures(self):
+        """Only use this coordinator's own league, even with mixed cache rows."""
+        return [row for row in (self.coordinator.data or {}).get("fixtures", [])
+                if isinstance(row, dict) and row.get("league", self._league) == self._league]
+
+    def _schedule(self):
+        tz = getattr(getattr(self.hass, "config", None), "time_zone", "UTC")
+        return schedule_next_round(self._fixtures(), self._league, self._league_name, tz)
+
     @property
     def available(self):
         # Unknown on startup rather than pretending there are zero matches.
         if self.entity_description.key == "favorite_clubs":
             return self.hass.data[DOMAIN]["preferences"]._loaded
         data = self.coordinator.data or {}
+        # A saved future calendar is still useful for voice while ESPN is down.
+        # Historical Live states, unlike upcoming fixtures, are NOT trusted.
+        if self.entity_description.key in ("upcoming_matches", "next_kickoff", "schedule_next_30_days"):
+            return bool(data.get("updated_at", {}).get("fixtures"))
         needed = ("news" if self.entity_description.key == "news_articles"
                   else "any" if self.entity_description.key == "last_update" else "fixtures")
         if needed == "any":
             return bool(data.get("updated_at"))
         # Persisted counts are historic, not current HA live/news sensor data.
         restored = data.get("cache_info", {}).get("restored_datasets", [])
-        if ((needed == "fixtures" and self.entity_description.key in
-             ("live_matches", "upcoming_matches", "next_kickoff") and "fixtures" in restored)
+        if ((needed == "fixtures" and self.entity_description.key == "live_matches" and "fixtures" in restored)
                 or (needed == "news" and "news" in restored)):
             return False
         return (bool(data.get("updated_at", {}).get(needed))
@@ -80,7 +96,9 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         data = self.coordinator.data or {}
-        fixtures = data.get("fixtures", [])
+        fixtures = self._fixtures()
+        if self.entity_description.key == "schedule_next_30_days":
+            return self._schedule()["total_matches"]
         if self.entity_description.key == "live_matches":
             return sum(f.get("state") == "in" for f in fixtures)
         if self.entity_description.key == "upcoming_matches":
@@ -88,7 +106,8 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
         if self.entity_description.key == "news_articles":
             return len(data.get("news", []))
         if self.entity_description.key == "favorite_clubs":
-            return len(self.hass.data[DOMAIN]["preferences"]._data["clubs"])
+            return sum(club.get("league") == self._league
+                       for club in self.hass.data[DOMAIN]["preferences"]._data["clubs"])
         if self.entity_description.key == "next_kickoff":
             future = []
             for fixture in fixtures:
@@ -109,17 +128,27 @@ class FootballNewsSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         data = self.coordinator.data or {}
+        if self.entity_description.key == "schedule_next_30_days":
+            return {**self._schedule(),
+                    "from_cache": "fixtures" in data.get("cache_info", {}).get("restored_datasets", [])}
         if self.entity_description.key == "live_matches":
-            return {"matches": [
+            return {"league_code": self._league, "league": self._league_name, "matches": [
                 {"id": f["id"], "home": f["home"]["name"], "away": f["away"]["name"],
                  "score": f"{f['home']['score']} - {f['away']['score']}", "status": f["status"]}
-                for f in data.get("fixtures", []) if f.get("state") == "in"
+                for f in self._fixtures() if f.get("state") == "in"
             ][:10], "source": data.get("source", "ESPN")}
         if self.entity_description.key == "last_update":
-            return {"updated_at": data.get("updated_at", {}), "errors": data.get("errors", []),
+            return {"league_code": self._league, "league": self._league_name,
+                    "updated_at": data.get("updated_at", {}), "errors": data.get("errors", []),
                     "cache_info": data.get("cache_info", {})}
+        if self.entity_description.key in ("upcoming_matches", "next_kickoff", "news_articles"):
+            feed = "news" if self.entity_description.key == "news_articles" else "fixtures"
+            return {"league_code": self._league, "league": self._league_name,
+                    "from_cache": feed in data.get("cache_info", {}).get("restored_datasets", [])}
         if self.entity_description.key == "favorite_clubs":
-            clubs = self.hass.data[DOMAIN]["preferences"]._data["clubs"]
-            return {"clubs": [{"name": x.get("name"), "league": x.get("league")}
+            clubs = [club for club in self.hass.data[DOMAIN]["preferences"]._data["clubs"]
+                     if club.get("league") == self._league]
+            return {"league_code": self._league, "league": self._league_name,
+                    "clubs": [{"id": x.get("id"), "name": x.get("name")}
                               for x in clubs[:5]]}
         return None

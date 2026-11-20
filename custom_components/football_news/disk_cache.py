@@ -20,12 +20,13 @@ _LOGGER = logging.getLogger(__name__)
 
 # Limits bound Recorder-independent disk use and prevent preserving old live
 # status indefinitely. Data restored from disk is always marked as cached.
-MAX_ROWS = {"fixtures": 400, "standings": 80, "news": 30, "leaders": 120}
+MAX_ROWS = {"fixtures": 400, "standings": 80, "news": 30, "leaders": 120, "history": 100}
 # Durable offline-first fallback: do not discard a useful table or upcoming
 # fixtures after a short ESPN outage / Home Assistant downtime. This is a
 # display-only cache, not proof that any saved match is currently live.
 MAX_AGE = {"fixtures": timedelta(days=45), "standings": timedelta(days=75),
-           "news": timedelta(days=14), "leaders": timedelta(hours=48)}
+           "news": timedelta(days=14), "leaders": timedelta(hours=48),
+           "history": timedelta(days=90)}
 MAX_SNAPSHOT_BYTES = 1_500_000
 
 
@@ -129,7 +130,7 @@ class FootballDiskCache:
 
             original_bytes = size()
             while size() > MAX_SNAPSHOT_BYTES:
-                candidates = [name for name in ("fixtures", "news", "leaders", "standings")
+                candidates = [name for name in ("fixtures", "news", "history", "leaders", "standings")
                               if payload["datasets"].get(name)]
                 if not candidates:
                     break

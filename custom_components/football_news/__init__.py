@@ -438,6 +438,41 @@ async def ws_fixtures_month(hass: HomeAssistant, connection, msg):
                                         "fixtures": fixtures[:800], "errors": errors})
 
 
+@websocket_api.websocket_command({"type": "football_news/favourite_form", probatio.Required("league"): str})
+@websocket_api.async_response
+async def ws_favourite_form(hass: HomeAssistant, connection, msg):
+    """On-demand 10-match form for all saved clubs in ONE competition.
+
+    This never blocks HA startup and never lets a browser choose arbitrary
+    teams to scan. Shared provider month caches avoid one request per device.
+    """
+    league = msg["league"]
+    runtime = _league_runtime(hass, league)
+    if not runtime:
+        connection.send_error(msg["id"], "not_found", "Competition not configured")
+        return
+    try:
+        saved = await hass.data[DOMAIN]["preferences"].read()
+    except (OSError, ValueError, TypeError) as error:
+        _LOGGER.warning("Favourite form preferences unavailable league=%s cause=%s",
+                        league, type(error).__name__)
+        connection.send_error(msg["id"], "storage_error", "Club preferences are unavailable")
+        return
+    clubs = [club for club in saved.get("clubs", [])
+             if isinstance(club, dict) and club.get("league") == league]
+    team_ids = [str(club.get("id", "")) for club in clubs[:5]]
+    coordinator = runtime["coordinator"]
+    try:
+        result = await coordinator.async_favourite_form(team_ids)
+    except ProviderError as error:
+        _LOGGER.warning("Favourite form history unavailable league=%s cause=%s",
+                        league, type(error).__name__)
+        connection.send_error(msg["id"], "provider_error", "Recent fixtures unavailable")
+        return
+    connection.send_result(msg["id"], {"league": league, "team_ids": team_ids,
+                                         **result})
+
+
 @websocket_api.websocket_command({"type": "football_news/club", probatio.Required("team_id"): str, probatio.Required("league"): str})
 @websocket_api.async_response
 async def ws_club(hass: HomeAssistant, connection, msg):
@@ -581,6 +616,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, ws_club)
     websocket_api.async_register_command(hass, ws_leaders)
     websocket_api.async_register_command(hass, ws_club_brief)
+    websocket_api.async_register_command(hass, ws_favourite_form)
     websocket_api.async_register_command(hass, ws_toggle_favourite)
     websocket_api.async_register_command(hass, ws_set_favourite)
     # Publish the sidebar only after every custom WS command is registered.

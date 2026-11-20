@@ -132,6 +132,82 @@ class FootballProvider:
 
         return await self.cached(f"month:{yyyymm}", ttl, fetch)
 
+    async def favourite_form_history(
+        self, team_ids: list[str], known_fixtures: list[dict] | None = None,
+    ) -> dict:
+        """Find up to 10 *real* completed league games for each favourite.
+
+        The normal coordinator only retains a 14-day history to keep startup
+        light. Older months are read solely for an open Overview, once per
+        league/month via the provider's shared single-flight cache. Fetch in
+        bounded batches and stop early when every club has ten results.
+        """
+        ids = list(dict.fromkeys(str(team_id) for team_id in team_ids
+                                 if str(team_id).isascii() and str(team_id).isdigit()
+                                 and 0 < len(str(team_id)) <= 16))[:5]
+        if not ids:
+            return {"fixtures": [], "complete": True, "partial": False}
+
+        now = datetime.now(timezone.utc)
+        found: dict[str, dict] = {}
+
+        def incorporate(items: list[dict]) -> None:
+            for fixture in items:
+                if not isinstance(fixture, dict) or fixture.get("state") != "post":
+                    continue
+                if not fixture.get("id") or not fixture.get("kickoff"):
+                    continue
+                try:
+                    kickoff = datetime.fromisoformat(str(fixture["kickoff"]).replace("Z", "+00:00"))
+                    if kickoff.tzinfo is None or kickoff > now:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                home, away = fixture.get("home") or {}, fixture.get("away") or {}
+                if str(home.get("id")) not in ids and str(away.get("id")) not in ids:
+                    continue
+                if not isinstance(home.get("score"), int) or isinstance(home.get("score"), bool):
+                    continue
+                if not isinstance(away.get("score"), int) or isinstance(away.get("score"), bool):
+                    continue
+                found[str(fixture["id"])] = fixture
+
+        def recent(team_id: str) -> list[dict]:
+            return sorted((match for match in found.values()
+                           if team_id in (str((match.get("home") or {}).get("id")),
+                                          str((match.get("away") or {}).get("id")))),
+                          key=lambda match: match.get("kickoff") or "", reverse=True)[:10]
+
+        incorporate(known_fixtures or [])
+        if all(len(recent(team)) >= 10 for team in ids):
+            return {"fixtures": list({str(game["id"]): game for team in ids
+                                      for game in recent(team)}.values()),
+                    "complete": True, "partial": False}
+
+        # Up to ~8 calendar months (240 days). During an offseason or before
+        # ten games have been played, return fewer games rather than inventing
+        # form. Three batches max: network I/O is never part of HA startup.
+        months = list(reversed(self._months_between(now - timedelta(days=220), now)))
+        failed_months = 0
+        for offset in range(0, len(months), 3):
+            if all(len(recent(team)) >= 10 for team in ids):
+                break
+            batch = months[offset:offset+3]
+            results = await asyncio.gather(*(self._month_events(month) for month in batch),
+                                           return_exceptions=True)
+            for month, result in zip(batch, results, strict=True):
+                if isinstance(result, Exception):
+                    failed_months += 1
+                    _LOGGER.debug("Favourite form history month unavailable league=%s month=%s cause=%s",
+                                  self.league, month, type(result).__name__)
+                else:
+                    incorporate(result)
+        games = {str(game["id"]): game for team in ids for game in recent(team)}
+        return {"fixtures": sorted(games.values(), key=lambda f: f.get("kickoff") or "",
+                                    reverse=True),
+                "complete": all(len(recent(team)) >= 10 for team in ids),
+                "partial": bool(failed_months)}
+
     async def matchday_scoreboard(self, yyyymmdd: str) -> list[dict]:
         """Fetch fresh scores for one UTC day, independent of month cache.
 

@@ -38,6 +38,9 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._data: dict[str, Any] = {key: [] for key in _DATASETS}
         self._leader_rows: list[dict] = []
         self._leader_updated: datetime | None = None
+        self._history_rows: list[dict] = []
+        self._history_updated: datetime | None = None
+        self._history_lock = asyncio.Lock()
         self._leader_lock = asyncio.Lock()
         self._notification_lock = asyncio.Lock()
         self._last_errors: list[str] = []
@@ -88,6 +91,11 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     timestamp = parse_time(cached["updated_at"].get(name))
                     if timestamp is None:
                         continue
+                    if name == "history":
+                        if self._history_updated is None or self._history_updated < timestamp:
+                            self._history_rows = rows
+                            self._history_updated = timestamp
+                        continue
                     if name == "leaders":
                         if self._leader_updated is None or self._leader_updated < timestamp:
                             self._leader_rows = rows
@@ -128,9 +136,38 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._leader_updated is not None and self._leader_rows:
             feeds["leaders"] = self._leader_rows
             updates["leaders"] = self._leader_updated.isoformat()
+        if self._history_updated is not None and self._history_rows:
+            feeds["history"] = self._history_rows
+            updates["history"] = self._history_updated.isoformat()
         if not feeds:
             return
         self._disk.schedule_save(feeds, updates, getattr(self.provider, "league_logo", ""))
+
+    async def async_favourite_form(self, team_ids: list[str]) -> dict:
+        """Serve recent results from HA Store, supplementing only on demand.
+
+        HA restart and browser reload never discard the 10-match history that
+        was previously fetched. One coordinator lock serializes concurrent
+        desktop/mobile requests, and the provider shares monthly ESPN cache.
+        """
+        await self.async_restore_cache()
+        async with self._history_lock:
+            known = list(self._history_rows) + list(self._data.get("fixtures", []))
+            result = await self.provider.favourite_form_history(team_ids, known)
+            if result.get("fixtures"):
+                merged = {str(item["id"]): item for item in self._history_rows
+                          if isinstance(item, dict) and item.get("id")}
+                for item in result["fixtures"]:
+                    merged[str(item["id"])] = item
+                # The history belongs to this league/config entry only, and
+                # is bounded independently of the regular 14-day calendar.
+                rows = sorted(merged.values(), key=lambda item: item.get("kickoff") or "",
+                              reverse=True)[:100]
+                if rows != self._history_rows:
+                    self._history_rows = rows
+                    self._history_updated = datetime.now(timezone.utc)
+                    self._persist(force=True)
+            return result
 
     async def async_leaders(self) -> tuple[list[dict], bool]:
         """Use RAM/disk for recent leaders and refresh ESPN only on demand."""
