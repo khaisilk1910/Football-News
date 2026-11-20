@@ -5,6 +5,14 @@ from .const import DOMAIN, VERSION
 async def async_get_config_entry_diagnostics(hass, entry):
     runtime = hass.data.get(DOMAIN, {}).get("entries", {}).get(entry.entry_id)
     data = (runtime["coordinator"].data or {}) if runtime else {}
+    registry = hass.data.get(DOMAIN, {}).get("league_registry")
+    stored_entries = []
+    if registry is not None:
+        try:
+            # Entry IDs identify user configuration; export only league codes.
+            stored_entries = [item.data["league"] for item in await registry.fallback_entries()]
+        except Exception:
+            stored_entries = []
     return {
         "integration_version": VERSION,
         "football_data_source": "ESPN",
@@ -15,6 +23,11 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "browser_local_data_cache": False,
         },
         "league": entry.data.get("league"),
+        "ha_registry": {
+            "native_entries": len(hass.config_entries.async_entries(DOMAIN)),
+            "saved_league_codes": stored_entries,
+            "runtime_ready": bool(runtime),
+        },
         "notifications_enabled": bool(entry.options.get("zalo_enabled")),
         "alert_types": {k: bool(entry.options.get(k, False)) for k in
                         ("schedule_alerts", "kickoff_alerts", "goal_alerts", "result_alerts", "news_alerts")},

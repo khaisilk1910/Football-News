@@ -107,7 +107,13 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except Exception:
                 # Cache corruption/IO must not prevent ESPN or HA setup.
                 _LOGGER.exception("Football News cache restore failed league=%s", self.provider.league)
-            finally:
+            except asyncio.CancelledError:
+                # A timed-out first-view WebSocket must not mark an unfinished
+                # HA Store read as a successfully hydrated, empty cache.
+                _LOGGER.debug('Football News cache hydration cancelled; retry permitted league=%s',
+                              self.provider.league)
+                raise
+            else:
                 self._cache_loaded = True
 
     def _persist(self, force: bool = False) -> None:

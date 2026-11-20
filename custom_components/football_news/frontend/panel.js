@@ -1,4 +1,4 @@
-/* Football News v2026.11.20.1 - HA Store first-open hydration. */
+/* Football News v2026.11.20.4 - resilient first view, accurate empty Live, 20s notices. */
 const FN_WORDS = {
   vi: {
     live:'Trực tiếp',fixtures:'Lịch thi đấu',results:'Kết quả',table:'Bảng xếp hạng',news:'Tin tức',overview:'Tổng quan',
@@ -416,6 +416,8 @@ const FN_V26_POLISH = `
  .app .league-mark{border-radius:12px;padding:5px}
 }
 `;
+const FN_TOAST_TTL_MS = 20000;
+const FN_LIVE_POPUP_TTL_MS = 20000;
 const FN_V24_NAV_PATHS = Object.freeze({
  overview:'<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
  live:'<circle cx="12" cy="12" r="2"/><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16"/>',
@@ -454,6 +456,9 @@ class FootballNewsPanel extends HTMLElement {
     // A WebView can be hidden on first open despite still having a blank view.
     this._needsHydration = true;
     this._registryEverReady = false;
+    this._serverStatus = null;
+    this._serverVersion = '';
+    this._receivedSnapshot = false;
     this._emptySince = 0;
     this._retryCount = 0;
     this._retryTimer = null;
@@ -479,10 +484,13 @@ class FootballNewsPanel extends HTMLElement {
     this._last = 0;
     this.error = '';
     this.saveStatus = null;
-    // Native in-panel toasts. A notification lives exactly 60 seconds from
-    // first appearance; repeated render/load cycles never extend its TTL.
+    // Native in-panel toasts expire 20 seconds after first appearance.
+    // Re-rendering, a persistent warning, or a slow WebSocket cannot extend TTL.
     this._toastActive = new Map();
     this._toastSeen = new Set();
+    // Suppress repeated popups when HA transitions in/out of the same error
+    // during reconnect. This is only in memory for the current page session.
+    this._toastLastShown = new Map();
     this._toastTimer = null;
     this._liveActive = new Map();
     this._liveQueue = [];
@@ -803,9 +811,12 @@ class FootballNewsPanel extends HTMLElement {
           !this._registryPending && !this._needsHydration) return;
       const hydrating=this._needsHydration || !rows.length;
       const hasLive=rows.some(l=>(l.fixtures||[]).some(f=>f.state==='in'));
-      // During hydration poll only local HA data (never ESPN directly).
-      // Once complete keep the dashboard fresh without leaving the page.
-      if (hydrating || Date.now()-this._last>(hasLive?25000:60000)) void this.load();
+      // Never hammer HA when only orphaned read-only disk snapshots exist.
+      // Live loaded entries still receive HA update events promptly.
+      const savedOnly=rows.length && rows.every(l=>l.entry_state==='saved_cache_without_entry');
+      const interval= savedOnly ? 60000 : hydrating ? (rows.length ? 15000 : 8000) :
+        (hasLive ? 25000 : 60000);
+      if(Date.now()-this._lastAttempt >= interval) void this.load();
     }, 5000);
     this._matchDetailTimer = setInterval(() => {void this.refreshLiveMatchDetail();}, 15000);
   }
@@ -890,6 +901,12 @@ class FootballNewsPanel extends HTMLElement {
     try {
       const data = await this.request({type:'football_news/data'},20000);
       if (!Array.isArray(data?.leagues)) throw new Error('Phản hồi WebSocket thiếu danh sách giải đấu');
+      this._receivedSnapshot = true;
+      this._serverVersion = data.backend_version || '';
+      this._serverStatus = data.recovery_status || null;
+      if (this._serverVersion && this._serverVersion !== '2026.11.20.4') {
+        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.20.4', this._serverVersion);
+      }
       // HA can dispatch its custom panel before config entries have been
       // restored. Probe a few times before showing the real empty-setup guide.
       // A cached competition is never erased by an empty transient registry.
@@ -929,7 +946,14 @@ class FootballNewsPanel extends HTMLElement {
       this.data = {...DEFAULT_DATA, ...alive(data),leagues};
       this.applyServerUI(data.ui_state);
       this.locale = FN_WORDS[this.data.language] ? this.data.language : 'vi';
-      if (this.selectedLeague !== 'all' && this.leagues().length && !this.leagues().some(l=>l.league_code===this.selectedLeague)) {this.selectedLeague='all';void this.saveUIState({league:'all'});}
+      if (this.selectedLeague !== 'all' && this.leagues().length && !this.leagues().some(l=>l.league_code===this.selectedLeague)) {
+        // Server may be restoring entries and saved account preferences in a
+        // different order. Correct the current view locally; NEVER write back
+        // while bootstrapping, as this triggered a spurious 'Cannot save' error
+        // and could replace the user's good preference with 'all'.
+        console.debug('[Football News] Saved selection not currently available; using all competitions for display');
+        this.selectedLeague='all';
+      }
       this._last = Date.now();
       this._showingCached = diskRestored || leagues.some(l=>(l.errors||[]).length>0) || (incomplete && Boolean(this._snapshotAt));
       if(!retained && !incomplete) {
@@ -957,6 +981,9 @@ class FootballNewsPanel extends HTMLElement {
       }
     } catch (error) {
       this.error = String(error?.message || 'WebSocket không phản hồi').slice(0, 240);
+      console.warn('[Football News] HA snapshot diagnostic',
+        {backend:this._serverVersion || 'no_response',status:this._serverStatus,
+         hasServerResponse:this._receivedSnapshot});
       this._showingCached = this.leagues().length > 0;
       console.warn('Football News dashboard request failed', this.error);
       this.render();
@@ -1043,7 +1070,7 @@ class FootballNewsPanel extends HTMLElement {
     if (close && (close === event.target || close.classList.contains('modal-close'))) {
       this.modal = null; this._matchWasLiveAt = 0; this.render(); return;
     }
-    const element = event.target.closest('[data-menu],[data-open-clubs],[data-reload-leagues],[data-tab],[data-league],[data-club],[data-match-star],[data-detail],[data-club-detail],[data-refresh],[data-sound],[data-month-fetch],[data-month-more],[data-round-prev],[data-round-next],[data-quick-setup],[data-team-load]');
+    const element = event.target.closest('[data-menu],[data-open-clubs],[data-reload-leagues],[data-tab],[data-league],[data-club],[data-match-star],[data-detail],[data-club-detail],[data-refresh],[data-sound],[data-month-fetch],[data-month-more],[data-round-prev],[data-round-next],[data-quick-setup],[data-team-load],[data-restore-cache]');
     if (!element) return;
     const data = element.dataset;
     if (data.menu !== undefined) {
@@ -1097,7 +1124,20 @@ class FootballNewsPanel extends HTMLElement {
       } catch (err) {this.monthData={error:true,league:this.selectedLeague,month,fixtures:[],message:String(err?.message||err).slice(0,200)};}
       this.render();return;
     }
+    if (data.restoreCache !== undefined) {
+      // First-open recovery reads the existing HA Store, not ESPN. The old
+      // 'Refresh' button called the ESPN refresh service before the config
+      // entries had loaded and showed a misleading error.
+      if (this._retryTimer) {clearTimeout(this._retryTimer);this._retryTimer=null;}
+      this._registryPending=true;
+      this._needsHydration=true;
+      await this.load();
+      return;
+    }
     if (data.refresh !== undefined) {
+      // If a reload still has no league registry, do not issue an ESPN service
+      // call that is guaranteed to fail; first read the local HA cache.
+      if (!this.leagues().length) { await this.load();return; }
       try {
         await this._hass?.callService('football_news','refresh',{});
         this.error='';
@@ -1489,7 +1529,7 @@ class FootballNewsPanel extends HTMLElement {
     // match events instead of discarding them as the viewport fills.
     while (this._liveActive.size < 3 && this._liveQueue.length) {
       const next=this._liveQueue.shift();
-      this._liveActive.set(next.event_key,{...next,expiresAt:Date.now()+24000});
+      this._liveActive.set(next.event_key,{...next,expiresAt:Date.now()+FN_LIVE_POPUP_TTL_MS});
     }
   }
   dismissLivePopup(key) {
@@ -1562,7 +1602,18 @@ class FootballNewsPanel extends HTMLElement {
       const signature = `${item.key}|${item.message}`;
       if (!this._toastSeen.has(signature)) {
         this._toastSeen.add(signature);
-        this._toastActive.set(signature, {...item, signature, expiresAt: now + 60000});
+        // A flapping network status may disappear for one render then return.
+        // Do not turn that into a permanently visible sequence of new popups.
+        if (now - (this._toastLastShown.get(signature) ?? -Infinity) >= 120000) {
+          this._toastLastShown.set(signature, now);
+          this._toastActive.set(signature, {...item, signature, expiresAt: now + FN_TOAST_TTL_MS});
+        }
+      }
+    }
+    // Limit session memory if an unstable source generates distinct messages.
+    if (this._toastLastShown.size > 128) {
+      for (const [signature, shownAt] of this._toastLastShown) {
+        if (now - shownAt >= 120000) this._toastLastShown.delete(signature);
       }
     }
     this.scheduleToastExpiry();
@@ -1599,7 +1650,7 @@ class FootballNewsPanel extends HTMLElement {
       (priority[a.kind]??5)-(priority[b.kind]??5) || a.expiresAt-b.expiresAt);
     return toasts.map(toast => {
       const icon = {error:'!',warning:'!',cache:'⏳',success:'✓',info:'i'}[toast.kind] || 'i';
-      const age = Math.min(60000, Math.max(0, 60000-(toast.expiresAt-now)));
+      const age = Math.min(FN_TOAST_TTL_MS, Math.max(0, FN_TOAST_TTL_MS-(toast.expiresAt-now)));
       const action = toast.action ? `<button type="button" class="fn-toast-action" data-reload-leagues ${this.setupBusy?'disabled':''}>${esc(toast.action)}</button>` : '';
       return `<section class="fn-toast fn-toast--${toast.kind}" role="${toast.kind==='error'?'alert':'status'}" aria-atomic="true">
         <span class="fn-toast-symbol" aria-hidden="true">${icon}</span>
@@ -1653,7 +1704,7 @@ class FootballNewsPanel extends HTMLElement {
     const existing = this.shadowRoot.querySelector?.('.app');
     // Simple ShadowRoot mocks in the existing unit suite have no DOM parser.
     if (!existing || typeof document === 'undefined' || typeof document.createElement !== 'function') {
-      const styles = `${STYLE}${MORE_STYLE}${UI_V8_STYLE}${PREVIEW_STYLE}${FN_FIRST_OPEN_STYLE}${ROUND_STYLE}${V12_STYLE}${V13_STYLE}${LEADER_LAYOUT_STYLES}${V18_BADGE_STYLES}${V19_RESPONSIVE_LEADERS}${V20_HEADING_STYLES}${FN_V23_DESIGN_STYLES}${FN_V24_FULL_REDESIGN_STYLES}${FN_V26_POLISH}${FN_V27_LAYOUT_POLISH}${FN_V29_LAYOUT_POLISH}${FN_V31_FIXTURE_POSTER}${FN_V32_TOAST_COMPACT}${FN_V33_INTERACTION_STYLES}${FN_LIVE_POPUP_STYLES}`;
+      const styles = `${STYLE}${MORE_STYLE}${UI_V8_STYLE}${PREVIEW_STYLE}${FN_FIRST_OPEN_STYLE}${ROUND_STYLE}${V12_STYLE}${V13_STYLE}${LEADER_LAYOUT_STYLES}${V18_BADGE_STYLES}${V19_RESPONSIVE_LEADERS}${V20_HEADING_STYLES}${FN_V23_DESIGN_STYLES}${FN_V24_FULL_REDESIGN_STYLES}${FN_V26_POLISH}${FN_V27_LAYOUT_POLISH}${FN_V29_LAYOUT_POLISH}${FN_V31_FIXTURE_POSTER}${FN_V32_TOAST_COMPACT}${FN_V33_INTERACTION_STYLES}${FN_LIVE_POPUP_STYLES}${FN_DIAGNOSTIC_STYLES}`;
       this.shadowRoot.innerHTML = `<style>${styles}</style>${markup}`;
       this._renderedView = `${this.tab}|${this.selectedLeague}`;
       this._renderedModal = this.modal ? `${this.modal.type}|${this.modal.id||this.modal.team_id||''}` : '';
@@ -1768,9 +1819,18 @@ class FootballNewsPanel extends HTMLElement {
     const inactive=leagueRows.filter(l=>!l.runtime_loaded);
     const errors=leagueRows.flatMap(l=>l.errors||[]);
     const showSetupGuide = leagueRows.length===0 && !this._registryPending;
+    // A valid HA fixture feed can contain zero Live matches. That is a
+    // completed result, not an unfinished restoration. Other feeds may still
+    // be hydrating; never turn that background work into a permanent Live spinner.
+    const liveFeedReady = this.tab==='live' && !this._registryPending &&
+      this._receivedSnapshot && leagueRows.length>0 && leagueRows.some(l=>
+        l.attempted===true || (l.fixtures||[]).length>0 ||
+        !!l.updated_at?.fixtures || (l.cache_info?.restored_datasets||[]).includes('fixtures'));
     // Setup instructions are actionable page content, not a transient status.
     const setupNotice=showSetupGuide?
       `<section class="setup-guide"><h3>🏟 ${this.t('setupTitle')}</h3><p>${this.t('setupDetails')}</p>${this.data.admin?`<button class="setup-action" data-quick-setup ${this.setupBusy?'disabled':''}>⚡ ${this.t('quickSetup')}</button>`:''}<a class="setup-anchor" href="/config/integrations/dashboard">${this.t('setupLink')} ↗</a></section>`:'';
+    const bootstrapNotice = this._registryPending && !leagueRows.length && this.tab!=='overview'?
+      `<section class="fn-ha-diagnostic" role="status">Đang tìm dữ liệu trên Home Assistant · Backend: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải cấu hình: ${this._serverStatus.native_entries}, cache hợp lệ: ${this._serverStatus.restored_feeds}`:(this.error||'đang kết nối'))} <button type="button" data-restore-cache>Đọc lại cache HA</button></section>`:'';
     const hasCachedFeed=leagueRows.some(l=>["fixtures","standings","news"].some(k=>(l[k]||[]).length));
     const cachedLeaders=this.leaderCache[this.previewLeague()?.league_code]?.from_cache;
     const notices=[];
@@ -1836,10 +1896,10 @@ class FootballNewsPanel extends HTMLElement {
               <div class="stadium-body">
                 <div class="fn-page-view">
       ${this.tab==='clubs'?`<div class="fav-launch"><small>${favourites.length}/5 ${this.t('favourites')}</small></div>`:''}
-      ${setupNotice}
-      ${body||(!setupNotice && (this._needsHydration || this.tab==='overview')?
-        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-refresh>${esc(this.t('refresh'))}</button></div></section>`:
-        `<div class="quiet">${esc(this.t('none'))}</div>`)}
+      ${setupNotice}${bootstrapNotice}
+      ${body||(!setupNotice && !liveFeedReady && (this._needsHydration || this.tab==='overview')?
+        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||'đang kết nối'))}</p>${this._serverVersion && this._serverVersion!=='2026.11.20.4'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
+        `<div class="quiet">${esc(this.t(this.tab==='live'?'noLive':'none'))}</div>`)}
                 </div>
                 <div class="fn-dialog-host">${this.modalMarkup()}</div>
               </div>
@@ -2253,7 +2313,7 @@ const FN_V32_TOAST_COMPACT = `
 .app .fn-toast-track{position:absolute;left:12px;right:12px;bottom:5px;height:3px;
   border-radius:3px;overflow:hidden;background:#ffffff1f}
 .app .fn-toast-track span{display:block;width:100%;height:100%;background:var(--toast-accent);
-  transform-origin:left center;animation:fn-toast-countdown 60000ms linear both}
+  transform-origin:left center;animation:fn-toast-countdown 20000ms linear both}
 @keyframes fn-toast-enter{from{opacity:0;transform:translateY(-9px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fn-toast-countdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 /* Compact vertical rhythm, while retaining safe content-to-border spacing. */
@@ -2390,5 +2450,13 @@ const FN_LIVE_POPUP_STYLES = `
 @media(prefers-reduced-motion:reduce){.app .fn-live-popup{animation:none}}
 `;
 
-if(!customElements.get('football-news-panel')) customElements.define('football-news-panel',FootballNewsPanel);
 
+
+
+const FN_DIAGNOSTIC_STYLES = `
+.fn-ha-diagnostic{margin:6px 0 16px;padding:14px 17px;background:var(--fn-card);border:1px solid var(--fn-border);border-radius:12px;color:var(--fn-text);font-size:13px}
+.fn-ha-diagnostic button{margin-left:10px;border:1px solid var(--skin-primary);border-radius:8px;color:var(--fn-text);background:transparent;padding:6px 10px;cursor:pointer}
+.fn-ha-status{font:11px/1.6 monospace;opacity:.75;overflow-wrap:anywhere}
+`;
+
+if(!customElements.get('football-news-panel')) customElements.define('football-news-panel',FootballNewsPanel);

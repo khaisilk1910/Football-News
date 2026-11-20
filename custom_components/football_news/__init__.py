@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from time import monotonic
 
 import voluptuous as vol
 import probatio
@@ -24,6 +25,8 @@ from .preferences import FootballPreferences
 from .ui_state import FootballUIState
 from .snapshot import competition_snapshot, runtime_for_entry
 from .cold_start import FootballColdStartCache
+from .registry import FootballLeagueRegistry
+from .recovery import FootballSavedCacheRecovery
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ("sensor", "binary_sensor")
@@ -74,6 +77,36 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         # competitions. Runtime entries are already owned by this integration.
         configured = [runtime["entry"] for runtime in runtimes.values()
                       if isinstance(runtime, dict) and runtime.get("entry") is not None]
+    registry = hass.data.get(DOMAIN, {}).get("league_registry")
+    registry_fallback = False
+    if registry is not None:
+        try:
+            if configured:
+                # In a reload only a *subset* of entries may have appeared.
+                # Record the confirmed entries and add persisted IDs not yet
+                # visible, rather than temporarily hiding their saved cache.
+                await asyncio.wait_for(registry.remember(configured), timeout=3)
+            historical = await asyncio.wait_for(registry.fallback_entries(), timeout=3)
+            known_ids = {entry.entry_id for entry in configured}
+            missing = [entry for entry in historical if entry.entry_id not in known_ids]
+            if missing:
+                configured.extend(missing)
+                registry_fallback = True
+                registry.note_fallback(len(missing), len(known_ids))
+        except Exception:
+            _LOGGER.exception("Football News stored league registry lookup failed; using available HA entries")
+    # A former installation can have intact .storage cache files but a missing
+    # config-entry index (e.g. interrupted migration). Recover public football
+    # snapshots read-only instead of showing an endless empty league spinner.
+    recovered_saved = []
+    if not configured:
+        recovery = hass.data.get(DOMAIN, {}).get('saved_cache_recovery')
+        if recovery is not None:
+            try:
+                recovered_saved = await asyncio.wait_for(recovery.async_snapshots(), timeout=7)
+            except Exception:
+                _LOGGER.exception('Football News emergency saved cache lookup failed')
+            configured = [entry for entry, _snapshot in recovered_saved]
     # A local disk read is cheap and does not touch ESPN. Restore all configured
     # leagues concurrently before the first sidebar snapshot, even when their
     # background refresh has not started yet.
@@ -88,7 +121,20 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
     async def cache_for_entry(entry, runtime):
         if runtime and runtime.get("coordinator"):
             coordinator = runtime["coordinator"]
-            await coordinator.async_restore_cache()
+            # Once the coordinator has restored its HA Store, its in-memory
+            # snapshot is authoritative and immediately accessible on reload.
+            # Do not re-open each disk file on every F5/WebSocket refresh: this
+            # used to delay the initial response when many leagues existed.
+            if getattr(coordinator, '_cache_loaded', False):
+                return entry.entry_id, {}
+            # Shield an unfinished Store read from a WebSocket timeout.
+            try:
+                await asyncio.wait_for(asyncio.shield(coordinator.async_restore_cache()), timeout=4)
+            except asyncio.TimeoutError:
+                _LOGGER.debug('Football News cache hydration still in progress league=%s',
+                              entry.data.get('league'))
+            if getattr(coordinator, '_cache_loaded', False):
+                return entry.entry_id, {}
             updates = (getattr(coordinator, "data", None) or {}).get("updated_at", {})
             # An updated_at timestamp is not proof the feed has renderable
             # rows (ESPN may have returned an empty feed). Use the *local*
@@ -99,7 +145,9 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
                 return entry.entry_id, {}
             # Even an allocated coordinator can be only partly hydrated.
             # Read missing/empty feeds directly from the last durable snapshot.
-        cached = await cold_index.async_entry_snapshot(entry)
+        # Cold cache reads run in a single-flight task and keep progressing
+        # even if this individual WebSocket attempt reaches its time budget.
+        cached = await asyncio.wait_for(asyncio.shield(cold_index.async_entry_snapshot(entry)), timeout=5)
         if cached and not runtime:
             _LOGGER.debug("Football News served cold disk snapshot before runtime league=%s",
                           entry.data.get("league"))
@@ -109,14 +157,47 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         *(cache_for_entry(entry, runtime) for entry, runtime in runtime_snapshots),
         return_exceptions=True,
     )
-    disk_fallbacks = {}
+    disk_fallbacks = {entry.entry_id: snapshot for entry, snapshot in recovered_saved}
     for entry, loaded in zip(configured, completed, strict=True):
         if isinstance(loaded, BaseException):
             _LOGGER.warning("Football News cold cache read failed league=%s error=%s",
                             entry.data.get("league", "?"), type(loaded).__name__)
-        else:
+        elif loaded[1] or loaded[0] not in disk_fallbacks:
+            # An empty index-specific read must never erase a recovered,
+            # validated snapshot from HA Store's saved cache directory.
             disk_fallbacks[loaded[0]] = loaded[1]
     leagues = competition_snapshot(configured, runtimes, LEAGUES, disk_fallbacks)
+    # A recreated HA config entry gets a new entry_id and therefore a new
+    # cache filename. An older, still-valid snapshot for the SAME league must
+    # be recoverable instead of displaying a blank page until ESPN succeeds.
+    if configured and not any(row['ready'] for row in leagues) and not recovered_saved:
+        recovery = hass.data.get(DOMAIN, {}).get('saved_cache_recovery')
+        if recovery is not None:
+            try:
+                historical = await asyncio.wait_for(recovery.async_snapshots(), timeout=7)
+                by_code = {entry.data['league']: saved for entry, saved in historical}
+                restored = 0
+                for entry in configured:
+                    if entry.data.get('league') in by_code and not disk_fallbacks.get(entry.entry_id):
+                        disk_fallbacks[entry.entry_id] = by_code[entry.data['league']]
+                        restored += 1
+                if restored:
+                    leagues = competition_snapshot(configured, runtimes, LEAGUES, disk_fallbacks)
+                    _LOGGER.warning('Football News reused %d HA Store league snapshot(s) '
+                                    'after config-entry ID change', restored)
+            except Exception:
+                _LOGGER.exception('Football News historical league cache lookup failed')
+    if not leagues and not startup_pending:
+        state = hass.data.get(DOMAIN, {})
+        now = monotonic()
+        if now - state.get('_no_leagues_warning_at', -120) >= 60:
+            state['_no_leagues_warning_at'] = now
+            _LOGGER.warning('Football News has no usable league snapshot: native_entries=%d '
+                            'runtime_entries=%d persisted_index=%s. Check Settings > Devices '
+                            '& services > Football News and HA Store permissions; '
+                            'ESPN is not involved in this cache read.',
+                            len(hass.config_entries.async_entries(DOMAIN)), len(runtimes),
+                            bool(registry_fallback))
     runtime = _runtime(hass, msg.get("entry_id", ""))
     if not runtime and configured:
         runtime = next((runtime_for_entry(entry, runtimes) for entry in configured
@@ -139,8 +220,8 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
             "cache_info": selected.get("cache_info", {}),
             "errors": selected.get("errors", [])}
     try:
-        preferences = await hass.data[DOMAIN]["preferences"].read()
-    except (OSError, ValueError, TypeError):
+        preferences = await asyncio.wait_for(hass.data[DOMAIN]["preferences"].read(), timeout=4)
+    except Exception:
         # Personal preferences are optional; do not make a disk-only football
         # snapshot fail because an unrelated preferences Store is unavailable.
         _LOGGER.warning("Football News preferences unavailable during snapshot")
@@ -152,8 +233,8 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
     user_id = getattr(connection.user, "id", None)
     if ui_store is not None and user_id:
         try:
-            ui_state = await ui_store.read(user_id)
-        except (OSError, ValueError, TypeError) as err:
+            ui_state = await asyncio.wait_for(ui_store.read(user_id), timeout=4)
+        except Exception as err:
             _LOGGER.warning("Football News UI state read failed: %s", type(err).__name__)
     lang_entry = runtime["entry"] if runtime else (configured[0] if configured else None)
     connection.send_result(msg["id"], {
@@ -167,6 +248,15 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         "starter_leagues": [{"code": code, "name": LEAGUES[code]} for code in STARTER_LEAGUES],
         "configured_count": len(configured),
         "startup_pending": startup_pending,
+        "registry_fallback": registry_fallback,
+        "registry_source": "saved_cache_files" if recovered_saved else (
+            "saved_ha" if registry_fallback else "config_entries"),
+        "backend_version": VERSION,
+        "recovery_status": {
+            "native_entries": len(hass.config_entries.async_entries(DOMAIN)),
+            "saved_only_entries": len(recovered_saved),
+            "restored_feeds": sum(bool(row.get('fixtures') or row.get('standings') or row.get('news')) for row in leagues),
+        },
         "runtime_count": sum(1 for row in leagues if row["runtime_loaded"]),
         "admin": bool(connection.user and connection.user.is_admin),
     })
@@ -190,8 +280,8 @@ async def ws_set_ui_state(hass: HomeAssistant, connection, msg):
     except ValueError as err:
         connection.send_error(msg["id"], "invalid", str(err))
         return
-    except (OSError, TypeError) as err:
-        _LOGGER.warning("Football News UI state save failed: %s", type(err).__name__)
+    except Exception as err:
+        _LOGGER.exception("Football News UI state save failed, user authenticated=%s", bool(connection.user))
         connection.send_error(msg["id"], "save_failed", "Home Assistant storage write failed")
         return
     connection.send_result(msg["id"], saved)
@@ -474,6 +564,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data[DOMAIN]["preferences"] = FootballPreferences(hass)
     hass.data[DOMAIN]["ui_state"] = FootballUIState(hass)
     hass.data[DOMAIN]["cold_cache"] = FootballColdStartCache(hass)
+    hass.data[DOMAIN]["league_registry"] = FootballLeagueRegistry(hass)
+    hass.data[DOMAIN]["saved_cache_recovery"] = FootballSavedCacheRecovery(hass)
     await hass.http.async_register_static_paths([
         StaticPathConfig("/football_news/assets", str(_ROOT / "frontend"), False),
         StaticPathConfig("/football_news/panel.js", str(_ROOT / "frontend" / "panel.js"), False),
@@ -560,6 +652,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     """Do not await ESPN/Zalo during HA startup; populate entities afterwards."""
     league = entry.data["league"]
+    # Remember durable IDs without waiting on ESPN and without delaying HA
+    # startup for a storage write. This allows first-panel cache reads even
+    # when the config-entry registry is temporarily empty on later reloads.
+    hass.async_create_task(hass.data[DOMAIN]["league_registry"].remember([entry]))
     # One-time migration: discard old provider credentials/flags from HA storage.
     obsolete = {"api_football_key", "use_football_hub_data", "clear_api_football_key"}
     if obsolete.intersection(entry.options):
@@ -623,3 +719,10 @@ async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
         if runtime is not None:
             await runtime["coordinator"].async_stop_live_events()
     return unloaded
+
+
+async def async_remove_entry(hass: HomeAssistant, entry) -> None:
+    """Discard the saved league index only on actual HA config-entry removal."""
+    registry = hass.data.get(DOMAIN, {}).get("league_registry")
+    if registry is not None:
+        await registry.forget(entry.entry_id)
