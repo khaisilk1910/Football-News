@@ -90,10 +90,15 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
             coordinator = runtime["coordinator"]
             await coordinator.async_restore_cache()
             updates = (getattr(coordinator, "data", None) or {}).get("updated_at", {})
-            if all(name in updates for name in ("fixtures", "standings", "news")):
+            # An updated_at timestamp is not proof the feed has renderable
+            # rows (ESPN may have returned an empty feed). Use the *local*
+            # Home Assistant Store as fallback for missing score/table data.
+            # Fully hydrated entries avoid an unnecessary disk lookup.
+            current = getattr(coordinator, "data", None) or {}
+            if all(current.get(name) for name in ("fixtures", "standings")):
                 return entry.entry_id, {}
             # Even an allocated coordinator can be only partly hydrated.
-            # Read missing feeds directly from the last durable snapshot.
+            # Read missing/empty feeds directly from the last durable snapshot.
         cached = await cold_index.async_entry_snapshot(entry)
         if cached and not runtime:
             _LOGGER.debug("Football News served cold disk snapshot before runtime league=%s",

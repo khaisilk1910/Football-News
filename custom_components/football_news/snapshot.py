@@ -50,8 +50,12 @@ def competition_snapshot(config_entries, runtimes: dict, league_names: dict,
             combined = dict(snapshot)
             combined["updated_at"] = dict(snapshot.get("updated_at") or {})
             for name in ("fixtures", "standings", "news"):
-                if name not in combined["updated_at"] and name in cached.get("updated_at", {}):
-                    combined[name] = cached.get(name, [])
+                # A partially started coordinator may have a timestamp but
+                # an empty ESPN feed. Keep saved HA content visible until
+                # actual rows arrive; do not overwrite any nonempty RAM feed.
+                cached_rows = cached.get(name) or []
+                if not combined.get(name) and cached_rows and name in cached.get("updated_at", {}):
+                    combined[name] = cached_rows
                     combined["updated_at"][name] = cached["updated_at"][name]
                     restored.append(name)
             if restored:
@@ -86,6 +90,8 @@ def competition_snapshot(config_entries, runtimes: dict, league_names: dict,
             # `ready` means at least one cached/upstream dataset exists, NOT
             # that the ESPN refresh has completed. Clients must check attempted
             # separately before exiting their initial hydration/retry loop.
-            "ready": bool(snapshot.get("updated_at")),
+            "ready": bool(snapshot.get("updated_at")) and any(
+                snapshot.get(name) for name in ("fixtures", "standings", "news")
+            ),
         })
     return result

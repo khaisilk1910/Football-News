@@ -7,10 +7,13 @@ entry (with single-flight lock), and never wait on the ESPN network here.
 from __future__ import annotations
 
 import asyncio
+import logging
 from time import monotonic
 
 from .const import season_year_for_league
 from .disk_cache import FootballDiskCache
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class FootballColdStartCache:
@@ -49,4 +52,13 @@ class FootballColdStartCache:
                 "errors": [],
             } if datasets else {})
             self._loaded[key] = (monotonic(), snapshot)
+            if datasets:
+                # Log the first successful disk hydration at INFO, subsequent
+                # cache revalidations at DEBUG to avoid filling the HA log.
+                log = _LOGGER.info if result is None or not result[1] else _LOGGER.debug
+                log("Football News HA Store first-view cache league=%s datasets=%s",
+                    league, ",".join(sorted(datasets)))
+            else:
+                _LOGGER.debug("Football News HA Store has no valid snapshot league=%s entry=%s season=%s",
+                              league, entry.entry_id, season)
             return snapshot
