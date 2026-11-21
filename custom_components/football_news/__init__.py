@@ -510,6 +510,31 @@ async def ws_match(hass: HomeAssistant, connection, msg):
     connection.send_result(msg["id"], normalize_summary(payload))
 
 
+@websocket_api.websocket_command({"type": "football_news/match_roster",
+                                      probatio.Required("team_id"): str,
+                                      probatio.Required("league"): str})
+@websocket_api.async_response
+async def ws_match_roster(hass: HomeAssistant, connection, msg):
+    """Optional season squad, loaded ONLY when a viewer opens match lineups.
+
+    The frontend compares these athletes against ESPN's match-sheet IDs to
+    identify players not named in that match. It never runs at HA startup.
+    The provider caches the club squad for 12 hours across viewing devices.
+    """
+    runtime = _league_runtime(hass, msg["league"])
+    if not runtime:
+        connection.send_error(msg["id"], "not_found", "League not configured")
+        return
+    try:
+        players = await runtime["coordinator"].provider.roster(msg["team_id"])
+    except ProviderError as err:
+        _LOGGER.debug("Match season-roster unavailable league=%s team=%s: %s",
+                      msg["league"], msg["team_id"], type(err).__name__)
+        connection.send_error(msg["id"], "provider_error", "Season roster unavailable")
+        return
+    connection.send_result(msg["id"], {"team_id": msg["team_id"], "players": players})
+
+
 @websocket_api.websocket_command({"type": "football_news/fixtures_month", probatio.Required("month"): str, probatio.Required("league"): str})
 @websocket_api.async_response
 async def ws_fixtures_month(hass: HomeAssistant, connection, msg):
@@ -736,6 +761,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, ws_reload_entries)
     websocket_api.async_register_command(hass, ws_teams)
     websocket_api.async_register_command(hass, ws_match)
+    websocket_api.async_register_command(hass, ws_match_roster)
     websocket_api.async_register_command(hass, ws_fixtures_month)
     websocket_api.async_register_command(hass, ws_club)
     websocket_api.async_register_command(hass, ws_leaders)
@@ -826,7 +852,7 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     provider = FootballProvider(async_get_clientsession(hass), league)
     coordinator = FootballNewsCoordinator(hass, entry, provider)
     coordinator.begin_cache_first_window(120)
-    notifier = ZaloNotifier(hass, entry, LEAGUES.get(league, league))
+    notifier = ZaloNotifier(hass, entry, LEAGUES.get(league, league), provider=provider)
     coordinator.notifier = notifier
     entry.runtime_data = {"coordinator": coordinator, "notifier": notifier}
     hass.data.setdefault(DOMAIN, {"entries": {}})["entries"][entry.entry_id] = {

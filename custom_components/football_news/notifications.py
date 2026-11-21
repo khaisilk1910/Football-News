@@ -8,12 +8,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+import re
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN, DEFAULT_OPTIONS
+from .live_events import extract_events
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,7 +36,95 @@ def _time(iso: str, tz) -> str:
         return "Chưa xác định"
 
 
-def build_message(kind: str, item: dict, league_name: str, tz) -> str:
+
+def _goal_clock_key(text: str) -> tuple[int, int]:
+    """Compare match minutes, including stoppage time (45+2, 90+4)."""
+    match = re.search(r"(\d{1,3})(?:\s*\+\s*(\d{1,2}))?", str(text or ""))
+    if not match:
+        return (-1, -1)
+    return int(match.group(1)), int(match.group(2) or 0)
+
+
+def _confirmed_summary_score(summary: dict) -> tuple[int, int] | None:
+    """Read ESPN summary's explicit home/away scoreboard, never guess it."""
+    if not isinstance(summary, dict):
+        return None
+    header = summary.get("header")
+    competitions = header.get("competitions") if isinstance(header, dict) else None
+    if not isinstance(competitions, list) or not competitions:
+        return None
+    competitors = competitions[0].get("competitors") if isinstance(competitions[0], dict) else None
+    if not isinstance(competitors, list):
+        return None
+    scores = {}
+    for item in competitors:
+        if not isinstance(item, dict) or item.get("homeAway") not in {"home", "away"}:
+            continue
+        value = item.get("score")
+        if isinstance(value, dict):
+            value = value.get("value", value.get("displayValue"))
+        if type(value) is int:
+            parsed = value
+        elif isinstance(value, str) and value.isascii() and value.isdecimal():
+            parsed = int(value)
+        else:
+            continue
+        if 0 <= parsed <= 99:
+            scores[item["homeAway"]] = parsed
+    if len(scores) != 2:
+        return None
+    return scores["home"], scores["away"]
+
+
+def goal_details_from_summary(match: dict, previous_scores: list, summary: dict) -> list[dict]:
+    """Attribute a new *verified* score increment to ESPN timeline goal(s).
+
+    Goals and scores are different ESPN feeds. Require a matching summary
+    scoreboard and a complete goal sequence for the affected team; otherwise
+    reporting an older scorer as the new goal would be misleading. Own goals,
+    missing timeline entries and provisional VAR adjustments safely fall back
+    to score-only notifications.
+    """
+    if not isinstance(previous_scores, list) or len(previous_scores) != 2:
+        return []
+    before = previous_scores
+    after = [match.get(side, {}).get("score") for side in ("home", "away")]
+    if not all(type(n) is int and n >= 0 for n in before + after):
+        return []
+    if any(new < old for old, new in zip(before, after, strict=True)):
+        return []
+    if _confirmed_summary_score(summary) != tuple(after):
+        return []
+    timeline = extract_events(summary, match)
+    if timeline is None:
+        return []
+    changes = []
+    for index, side in enumerate(("home", "away")):
+        old_score, new_score = before[index], after[index]
+        if new_score <= old_score:
+            continue
+        team = match.get(side, {})
+        team_name = str(team.get("name") or "").strip()
+        if not team_name:
+            return []
+        goals = [event for event in timeline if event["type"] == "goal"
+                 and event.get("team", "").casefold() == team_name.casefold()]
+        # The ESPN timeline must account for *all* of this team's goals.
+        # Otherwise we cannot tell if its most recent entry is the new goal.
+        if len(goals) != new_score:
+            return []
+        goals.sort(key=lambda event: _goal_clock_key(event.get("minute", "")))
+        for event in goals[old_score:new_score]:
+            changes.append({
+                "team": team_name,
+                "player": event.get("player", ""),
+                "minute": event.get("minute", ""),
+            })
+    changes.sort(key=lambda event: _goal_clock_key(event["minute"]))
+    return changes
+
+
+def build_message(kind: str, item: dict, league_name: str, tz, *, goal_details: list[dict] | None = None) -> str:
     """Rich-text messages using supported Zalo tags (no arbitrary HEX colors)."""
     league = _safe(league_name)
     if kind == "news":
@@ -56,9 +146,21 @@ def build_message(kind: str, item: dict, league_name: str, tz) -> str:
         a = item.get("away", {}).get("score")
         if type(h) is not int or type(a) is not int:
             raise ValueError("Cannot announce a goal without a verified score")
+        details = goal_details or []
+        if details:
+            incidents = "\n".join(
+                f"⚽ {_safe(goal.get('team') or 'Đội ghi bàn')}"
+                f"\n👤 Cầu thủ: {_safe(goal.get('player') or 'ESPN đang cập nhật')}"
+                f"\n⏱ Phút: {_safe(goal.get('minute') or 'ESPN đang cập nhật')}"
+                for goal in details[:6]
+            )
+            return ("{big}{orange}**⚽ FOOTBALL NEWS · BÀN THẮNG**{/orange}{/big}\n"
+                    f"{match}\n{{big}}**{h} - {a}**{{/big}}\n"
+                    f"{incidents}\n🏆 {league}\n"
+                    "{small}Cầu thủ và phút từ diễn biến ESPN{/small}")
         return ("{big}{orange}**⚽ FOOTBALL NEWS · BÀN THẮNG / CẬP NHẬT TỶ SỐ**{/orange}{/big}\n"
                 f"{match}\n{{big}}**{h} - {a}**{{/big}}\n🏆 {league}\n"
-                "{small}Tỷ số mới từ ESPN · Có thể bao gồm điều chỉnh kết quả{/small}")
+                "{small}ESPN chưa xác nhận cầu thủ/phút ghi bàn; có thể là điều chỉnh tỷ số{/small}")
     if kind == "kickoff":
         return ("{big}{green}**⚽ FOOTBALL NEWS · BẮT ĐẦU**{/green}{/big}\n"
                 f"{match}\n🏆 {league}\n🕒 {_time(item.get('kickoff', ''), tz)}\n"
@@ -77,10 +179,11 @@ def build_message(kind: str, item: dict, league_name: str, tz) -> str:
 class ZaloNotifier:
     """Deduplicate status transitions and delayed schedule reminders."""
 
-    def __init__(self, hass: HomeAssistant, entry, league_name: str) -> None:
+    def __init__(self, hass: HomeAssistant, entry, league_name: str, provider=None) -> None:
         self.hass = hass
         self.entry = entry
         self.league_name = league_name
+        self.provider = provider
         self._store = Store(hass, 1, f"{DOMAIN}_alerts_{entry.entry_id}")
         self._lock = asyncio.Lock()
         self._loaded = False
@@ -190,7 +293,24 @@ class ZaloNotifier:
                             and isinstance(previous_score, list) and len(previous_score) == 2
                             and all(type(x) is int for x in previous_score + current_score)
                             and any(new > old for old, new in zip(previous_score, current_score, strict=True))):
-                        await self.send(build_message("goal", match, self.league_name, tz))
+                        details = []
+                        if self.provider is not None:
+                            try:
+                                # Zalo work is already scheduled off the HA
+                                # coordinator refresh. One bounded provider
+                                # lookup uses the shared 12-second summary cache.
+                                summary = await asyncio.wait_for(
+                                    self.provider.summary(match_id), timeout=5.0)
+                                details = goal_details_from_summary(match, previous_score, summary)
+                            except Exception as err:
+                                _LOGGER.debug("Zalo goal attribution unavailable league=%s match=%s cause=%s",
+                                              getattr(self.entry, "data", {}).get("league", "?"), match_id,
+                                              type(err).__name__)
+                        if not details:
+                            _LOGGER.debug("Zalo sending score-only update match=%s: ESPN attribution unverified",
+                                          match_id)
+                        await self.send(build_message("goal", match, self.league_name, tz,
+                                                      goal_details=details))
                     if before_state in {"pre", "in"} and state == "post" and opts.get("result_alerts"):
                         if match.get("home", {}).get("score") is not None and match.get("away", {}).get("score") is not None:
                             await self.send(build_message("result", match, self.league_name, tz))

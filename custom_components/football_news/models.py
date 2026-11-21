@@ -279,7 +279,10 @@ def normalize_summary(payload: dict) -> dict:
     venue = _dict(game_info.get("venue"))
     events = _list(payload.get("keyEvents")) or _list(payload.get("scoringPlays"))
     details = []
-    for event in events[:60]:
+    # Keep late-match incidents too; the old 60-event cutoff could hide the
+    # latest goal when ESPN returned the commentary oldest-first. Bounded to
+    # protect websocket payload sizes for unusually verbose matches.
+    for event in events[:120]:
         event = _dict(event)
         clock = _dict(event.get("clock"))
         event_type = _dict(event.get("type"))
@@ -307,9 +310,15 @@ def normalize_summary(payload: dict) -> dict:
             label = _text(stat.get("label") or stat.get("name") or stat.get("abbreviation"))
             value = _text(stat.get("displayValue") if stat.get("displayValue") is not None else stat.get("value"))
             if label and value:
-                stats.append({"label": label[:90], "value": value[:45]})
+                stats.append({"label": label[:90], "key": _text(stat.get("name") or label)[:90],
+                              "value": value[:45]})
         if team.get("displayName"):
-            teams.append({"name": _text(team.get("displayName")), "statistics": stats})
+            team_logos = _list(team.get("logos"))
+            teams.append({"id": _text(team.get("id")),
+                          "home_away": _text(row.get("homeAway") or team.get("homeAway")).lower(),
+                          "name": _text(team.get("displayName")),
+                          "logo": _url(_dict(team_logos[0]).get("href") if team_logos else team.get("logo")),
+                          "statistics": stats})
     officials = []
     for official in _list(game_info.get("officials"))[:8]:
         official = _dict(official)
@@ -328,11 +337,28 @@ def normalize_summary(payload: dict) -> dict:
             athlete = _dict(member.get("athlete")) or member
             name = _text(athlete.get("displayName") or athlete.get("fullName"))
             if name:
-                players.append({"name": name, "starter": bool(member.get("starter", False)),
+                status = _text(member.get("status") or member.get("rosterStatus")).casefold()
+                # An explicit inactive/not-selected entry is not a bench player.
+                # All other non-starters in an ESPN match roster are substitutes.
+                not_selected = status in {"inactive", "not_selected", "not in squad", "out"}
+                players.append({"id": _text(athlete.get("id")), "name": name,
+                                "starter": bool(member.get("starter", False)) and not not_selected,
+                                "status": "unlisted" if not_selected else
+                                          ("starter" if member.get("starter") else "substitute"),
                                 "number": _text(athlete.get("jersey")),
-                                "position": _text(_dict(athlete.get("position")).get("abbreviation"))})
+                                "position": _text(_dict(athlete.get("position")).get("abbreviation") or
+                                                  _dict(athlete.get("position")).get("displayName") or
+                                                  _dict(member.get("position")).get("abbreviation") or
+                                                  member.get("positionAbbreviation") or ""),
+                                "position_abbr": _text(member.get("formationPosition") or
+                                                       member.get("positionAbbreviation") or
+                                                       _dict(athlete.get("position")).get("abbreviation") or "")})
         if players:
-            lineups.append({"team": _text(club.get("displayName")), "players": players})
+            club_logos = _list(club.get("logos"))
+            lineups.append({"team_id": _text(club.get("id")),
+                            "team": _text(club.get("displayName")),
+                            "logo": _url(_dict(club_logos[0]).get("href") if club_logos else club.get("logo")),
+                            "players": players})
     return {"venue": _text(venue.get("fullName")), "attendance": _int(game_info.get("attendance")),
             "events": details, "teams": teams, "officials": officials,
             "weather": _text(weather.get("displayValue") or weather.get("description")),
@@ -383,6 +409,7 @@ def normalize_roster(payload: dict) -> list[dict]:
         output.append({
             "id": _text(athlete.get("id")), "name": _text(athlete.get("displayName")),
             "position": _text(position.get("displayName") or position.get("abbreviation")),
+            "position_abbr": _text(position.get("abbreviation")),
             "number": _text(athlete.get("jersey")), "photo": espn_athlete_photo(athlete),
             "age": _int(athlete.get("age")),
         })
