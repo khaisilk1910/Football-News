@@ -26,6 +26,18 @@ def _safe(text: Any, limit: int = 110) -> str:
     return result.strip()[:limit]
 
 
+def _safe_commentary(text: Any, limit: int) -> str:
+    """Limit third-party prose and prevent Zalo rich-text markup injection."""
+    if not isinstance(text, str) or not text.strip():
+        return ""
+    normalized = " ".join(text.split())
+    # The same protection as the rest of the notifier, but allow long prose.
+    normalized = _safe(normalized, limit)
+    if len(normalized) == limit and len(text.strip()) > limit:
+        normalized = normalized.rsplit(" ", 1)[0].rstrip(".,;:") + "…"
+    return normalized
+
+
 def _time(iso: str, tz) -> str:
     try:
         parsed = datetime.fromisoformat(iso.replace("Z", "+00:00"))
@@ -115,11 +127,16 @@ def goal_details_from_summary(match: dict, previous_scores: list, summary: dict)
             return []
         goals.sort(key=lambda event: _goal_clock_key(event.get("minute", "")))
         for event in goals[old_score:new_score]:
-            changes.append({
+            goal = {
                 "team": team_name,
                 "player": event.get("player", ""),
                 "minute": event.get("minute", ""),
-            })
+            }
+            # `extract_events` retains only verified goal-type entries. Do
+            # not attach commentary from other events or the previous goal.
+            if event.get("description"):
+                goal["description"] = event["description"]
+            changes.append(goal)
     changes.sort(key=lambda event: _goal_clock_key(event["minute"]))
     return changes
 
@@ -148,16 +165,26 @@ def build_message(kind: str, item: dict, league_name: str, tz, *, goal_details: 
             raise ValueError("Cannot announce a goal without a verified score")
         details = goal_details or []
         if details:
-            incidents = "\n".join(
-                f"⚽ {_safe(goal.get('team') or 'Đội ghi bàn')}"
-                f"\n👤 Cầu thủ: {_safe(goal.get('player') or 'ESPN đang cập nhật')}"
-                f"\n⏱ Phút: {_safe(goal.get('minute') or 'ESPN đang cập nhật')}"
-                for goal in details[:6]
-            )
+            # Bound the overall payload when ESPN publishes several goals in
+            # one refresh. Keep the original ESPN account of each *new* goal.
+            announced = details[:6]
+            description_budget = max(210, min(650, 1800 // len(announced)))
+            incidents = []
+            for goal in announced:
+                block = (f"⚽ {_safe(goal.get('team') or 'Đội ghi bàn')}"
+                         f"\n👤 Cầu thủ: {_safe(goal.get('player') or 'ESPN đang cập nhật')}"
+                         f"\n⏱ Phút: {_safe(goal.get('minute') or 'ESPN đang cập nhật')}")
+                commentary = _safe_commentary(goal.get("description"), description_budget)
+                if commentary:
+                    block += f"\n📝 Diễn biến (ESPN): {commentary}"
+                incidents.append(block)
+            if len(details) > len(announced):
+                incidents.append(f"… và {len(details)-len(announced)} bàn thắng khác trong lần cập nhật.")
+            incidents_text = "\n\n".join(incidents)
             return ("{big}{orange}**⚽ FOOTBALL NEWS · BÀN THẮNG**{/orange}{/big}\n"
                     f"{match}\n{{big}}**{h} - {a}**{{/big}}\n"
-                    f"{incidents}\n🏆 {league}\n"
-                    "{small}Cầu thủ và phút từ diễn biến ESPN{/small}")
+                    f"{incidents_text}\n🏆 {league}\n"
+                    "{small}Dữ liệu từ diễn biến trận đấu ESPN{/small}")
         return ("{big}{orange}**⚽ FOOTBALL NEWS · BÀN THẮNG / CẬP NHẬT TỶ SỐ**{/orange}{/big}\n"
                 f"{match}\n{{big}}**{h} - {a}**{{/big}}\n🏆 {league}\n"
                 "{small}ESPN chưa xác nhận cầu thủ/phút ghi bàn; có thể là điều chỉnh tỷ số{/small}")

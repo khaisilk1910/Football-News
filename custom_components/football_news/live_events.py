@@ -52,6 +52,13 @@ def event_kind(event: dict) -> str:
     return ""
 
 
+def _goal_description(event: dict) -> str:
+    """Extract source commentary, preferring full ESPN text over a short label."""
+    texts = [" ".join(value.split()) for key in ("text", "description", "shortText")
+             if isinstance((value := event.get(key)), str) and value.strip()]
+    return max(texts, key=len)[:900] if texts else ""
+
+
 def _player(event: dict) -> str:
     candidates = []
     for key in ("participants", "athletes"):
@@ -157,7 +164,9 @@ def extract_events(summary: dict, fixture: dict) -> list[dict] | None:
         if key in keys:
             continue
         keys.add(key)
+        commentary = _goal_description(event) if category == "goal" else ""
         found.append({
+            **({"description": commentary} if commentary else {}),
             "event_key": key,
             "type": category,
             "event_id": match_id,
