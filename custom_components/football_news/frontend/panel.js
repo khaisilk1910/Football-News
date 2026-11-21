@@ -1,4 +1,4 @@
-/* Football News v2026.11.21.2 - resilient first view, accurate empty Live, 20s notices. */
+/* Football News v2026.11.21.6 - club crest match statistics and lineups. */
 const FN_WORDS = {
   vi: {
     live:'Trực tiếp',fixtures:'Lịch thi đấu',results:'Kết quả',table:'Bảng xếp hạng',news:'Tin tức',overview:'Tổng quan',
@@ -40,6 +40,113 @@ Object.assign(FN_WORDS.en,{"liveGoal":"GOAL!","liveYellow":"YELLOW CARD","liveRe
 const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ts = s => {const n = Date.parse(s || ''); return Number.isFinite(n) ? n : 0;};
 const alive = x => x && typeof x === 'object' ? x : {};
+// The ESPN event feed may arrive oldest-first or newest-first. Always display
+// the newest game minute first; 45+2 stays after 45 and before second-half 46.
+function fnTimelineMinute(event) {
+  if (event.kind === 'start') return -1;
+  const minute = String(event.minute || '').trim();
+  const match = minute.match(/(\d{1,3})(?:\s*\+\s*(\d{1,2}))?/);
+  if (match) return Number(match[1]) + Number(match[2] || 0) / 100;
+  const description = String(event.description || '').toLowerCase();
+  if (/full.?time|match ends|end of match/.test(description)) return 130;
+  if (/half.?time|first half ends/.test(description)) return 45.8;
+  if (/second half begins|second half starts/.test(description)) return 45.7;
+  return -1;
+}
+function fnTimelineNewestFirst(events) {
+  return [...events].map((event,index)=>({event,index})).sort((a,b) =>
+    fnTimelineMinute(b.event)-fnTimelineMinute(a.event) || b.index-a.index).map(x=>x.event);
+}
+// Never turn ESPN's generic D/M/F positions into a guessed CB/CDM/CF.
+// Preserve precise match-day or roster codes when the upstream feed supplies them.
+function fnPositionCode(position) {
+  const raw = String(position || '').trim().toUpperCase();
+  const compact = raw.replace(/[\s_–-]+/g,'');
+  const aliases = {
+    G:'GK',GOALKEEPER:'GK',KEEPER:'GK',
+    D:'DF',DEFENDER:'DF',DEFENCE:'DF',DEFENSE:'DF',
+    M:'MF',MIDFIELDER:'MF',MIDFIELD:'MF',
+    F:'FW',FORWARD:'FW',ATTACKER:'FW',
+    CENTERBACK:'CB',CENTREBACK:'CB',CENTRALDEFENDER:'CB',
+    RIGHTBACK:'RB',LEFTBACK:'LB',
+    RIGHTWINGBACK:'RWB',LEFTWINGBACK:'LWB',
+    CENTREMIDFIELDER:'CM',CENTERMIDFIELDER:'CM',
+    DEFENSIVEMIDFIELDER:'CDM',CENTRALDEFENSIVEMIDFIELDER:'CDM',
+    ATTACKINGMIDFIELDER:'CAM',CENTRALATTACKINGMIDFIELDER:'CAM',
+    CENTREFORWARD:'CF',CENTERFORWARD:'CF',STRIKER:'ST',
+    LEFTWINGER:'LW',RIGHTWINGER:'RW',CMD:'CDM',
+  };
+  return aliases[compact] || (/^(GK|DF|CB|LB|RB|LWB|RWB|SW|MF|CM|CDM|CAM|LM|RM|DM|AM|FW|CF|ST|SS|LF|RF|LW|RW)$/.test(compact) ? compact : '');
+}
+function fnBestPosition(player, seasonRoster=[]) {
+  const matchPosition=fnPositionCode(player?.position_abbr || player?.position);
+  if (matchPosition && !['DF','MF','FW'].includes(matchPosition)) return matchPosition;
+  const id=String(player?.id || '').trim();
+  const fold=name=>String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const rosterPlayer=Array.isArray(seasonRoster)?seasonRoster.find(p=>
+    (id && p.id && String(p.id)===id) || (p.name && fold(p.name)===fold(player?.name))):null;
+  const detailed=fnPositionCode(rosterPlayer?.position_abbr || rosterPlayer?.position);
+  return detailed && !['DF','MF','FW'].includes(detailed) ? detailed : matchPosition || detailed;
+}
+function fnPositionBadge(position, placeholder=false) {
+  const code=fnPositionCode(position);
+  if (!code && !placeholder) return '';
+  const role = code==='GK' ? 'goalkeeper' :
+    /^(CB|LB|RB|LWB|RWB|SW|DF)$/.test(code) ? 'defence' :
+    /^(CM|CDM|CAM|LM|RM|DM|AM|MF)$/.test(code) ? 'midfield' :
+    /^(CF|ST|SS|LF|RF|LW|RW|FW)$/.test(code) ? 'forward' : 'other';
+  return `<span class="fn-position-badge fn-role-${role}" aria-label="${esc(code || 'Position unknown')}">${esc(code || '—')}</span>`;
+}
+function fnStatKey(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]+/g,'');
+}
+// ESPN summary boxscore rows can arrive away-first. Never assume array order:
+// select home/away using declared side, ID or fixture team name.
+function fnMatchStatComparison(teams, fixture) {
+  const rows=(Array.isArray(teams)?teams:[]).filter(t=>Array.isArray(t?.statistics) && t.statistics.length);
+  const matched=new Set();
+  const choose=(side,club)=>{
+    const targetId=String(club?.id || '').trim();
+    const targetName=fnStatKey(club?.name);
+    const found=rows.find(row=>!matched.has(row) &&
+      (String(row.home_away||row.homeAway||'').toLowerCase()===side ||
+       (targetId && String(row.id||row.team_id||'')===targetId) ||
+       (targetName && fnStatKey(row.name)===targetName)));
+    if(found) matched.add(found);
+    return found || null;
+  };
+  let home=choose('home',fixture?.home),away=choose('away',fixture?.away);
+  // Legacy snapshots have no home/away metadata. Only use array order if no
+  // fixture was found at all; otherwise leave ambiguous values unavailable.
+  if(!fixture && rows.length===2) {home ||= rows[0];away ||= rows.find(t=>t!==home)||null;}
+  const keys=new Map();
+  for (const [side,team] of [['home',home],['away',away]]) {
+    for(const item of team?.statistics||[]) {
+      const key=fnStatKey(item.key || item.label);
+      if (!key) continue;
+      if (!keys.has(key)) keys.set(key,{label:item.label,home:'—',away:'—'});
+      keys.get(key)[side]=String(item.value ?? '—');
+    }
+  }
+  return {home,away,rows:[...keys.values()]};
+}
+function fnSeasonUnlisted(matchPlayers,seasonRoster) {
+  // A truncated match sheet cannot prove that anybody is absent. Require a
+  // credible 11+ substitutes before making a comparison with the club squad.
+  const all = matchPlayers || [];
+  const listed = all.filter(p=>p.status !== 'unlisted');
+  const starters = listed.filter(p=>p.starter || p.status === 'starter');
+  const bench = listed.filter(p=>!p.starter && p.status !== 'starter');
+  const listedWithId = listed.filter(p=>String(p.id||'').trim());
+  if (starters.length < 11 || bench.length < 1 || !Array.isArray(seasonRoster) ||
+      !seasonRoster.length || listedWithId.length < listed.length * .75) return null;
+  const ids = new Set(all.map(p=>String(p.id||'').trim()).filter(Boolean));
+  const names = new Set(all.map(p=>String(p.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLocaleLowerCase()).filter(Boolean));
+  return seasonRoster.filter(p=>p && p.name &&
+    !(p.id && ids.has(String(p.id))) &&
+    !names.has(String(p.name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLocaleLowerCase())).slice(0,45);
+}
 const DEFAULT_DATA = {fixtures:[],standings:[],news:[],errors:[],updated_at:{},league:'—'};
 const STYLE = `
 :host{display:block;min-height:100vh;color:#fff3e9;font:500 14px/1.5 Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--bg:#170b10;--panel:#26131b;--stroke:#66313b;--soft:#d9b7b0;--accent:#ffd24c;--red:#f34b4c}
@@ -520,6 +627,11 @@ class FootballNewsPanel extends HTMLElement {
       // A missing ESPN league crest must never cover the lightweight badge.
       if (event.target.matches?.('.league-mark img')) { event.target.hidden=true; event.target.closest('.league-mark')?.classList.add('is-missing-logo'); }
       if (event.target.matches?.('.club-leader-logo img')) { event.target.hidden=true; event.target.closest('.club-leader-logo')?.classList.add('is-missing-logo'); }
+      if (event.target.matches?.('.fn-stat-team-crest img,.fn-lineup-team-crest img')) {
+        event.target.hidden=true;
+        const fallback=event.target.parentElement?.querySelector('.fn-crest-fallback');
+        if(fallback)fallback.hidden=false;
+      }
     }, true);
     this.shadowRoot.addEventListener('click', event => this._click(event));
     this.shadowRoot.addEventListener('change', event => {
@@ -681,7 +793,8 @@ class FootballNewsPanel extends HTMLElement {
         event_id:current.id,league:current.league});
       if (!this.isConnected || this.modal?.type !== 'match' ||
           this.modal.id !== current.id || this.modal.league !== current.league) return;
-      const next = {type:'match',id:current.id,league:current.league,...alive(fresh)};
+      const next = {type:'match',id:current.id,league:current.league,...alive(fresh),
+        seasonRosters:current.seasonRosters,rosterLoadState:current.rosterLoadState};
       if (JSON.stringify(next) !== JSON.stringify(this.modal)) {
         const scroll = this.shadowRoot.querySelector('.modal-scroll');
         const position = scroll?.scrollTop || 0;
@@ -696,6 +809,33 @@ class FootballNewsPanel extends HTMLElement {
     } finally {
       this._matchDetailPending = false;
     }
+  }
+  async loadMatchSquads(id,league) {
+    const current=this.modal;
+    if (current?.type !== 'match' || current.id !== id || current.league !== league) return;
+    // Do not ask for two season squads when ESPN only sent a partial sheet.
+    const teams=(current.lineups||[]).filter(t=>/^\d{1,16}$/.test(String(t.team_id||'')) &&
+      (t.players||[]).filter(p=>p.starter || p.status==='starter').length >= 11 &&
+      (t.players||[]).some(p=>!p.starter && p.status!=='starter'));
+    if (!teams.length || !this._hass) return;
+    // A current season squad is not evidence about a historical match from
+    // before transfers. Compare only recent fixtures for reliability.
+    const fixture=this.leagues().flatMap(l=>(l.fixtures||[]).map(f=>({...f,league:l.league_code})))
+      .find(f=>String(f.id)===String(id)&&f.league===league);
+    const kickoff=ts(fixture?.kickoff);
+    if (!kickoff || Date.now()-kickoff > 7*86400000 || kickoff-Date.now() > 86400000) return;
+    this.modal={...current,rosterLoadState:'loading'};
+    this.render();
+    const response = await Promise.allSettled(teams.map(t=>this.request({
+      type:'football_news/match_roster',team_id:String(t.team_id),league})));
+    if (this.modal?.type!=='match' || this.modal?.id!==id || this.modal?.league!==league) return;
+    const seasonRosters={...this.modal.seasonRosters};
+    response.forEach((result,index)=>{
+      if(result.status==='fulfilled' && Array.isArray(result.value?.players) && result.value.players.length)
+        seasonRosters[teams[index].team_id]=result.value.players;
+    });
+    this.modal={...this.modal,seasonRosters,rosterLoadState:'done'};
+    this.render();
   }
   foldName(value) {
     return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
@@ -963,8 +1103,8 @@ class FootballNewsPanel extends HTMLElement {
           }
         }, Math.min(125000, this._espnWaitSeconds * 1000 + 1200));
       }
-      if (this._serverVersion && this._serverVersion !== '2026.11.21.2') {
-        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.21.2', this._serverVersion);
+      if (this._serverVersion && this._serverVersion !== '2026.11.21.3') {
+        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.21.3', this._serverVersion);
       }
       // HA can dispatch its custom panel before config entries have been
       // restored. Probe a few times before showing the real empty-setup guide.
@@ -1302,6 +1442,8 @@ class FootballNewsPanel extends HTMLElement {
         if(this.modal?.id === id) this.modal={type:'match',id,league,...alive(result)};
       } catch {if(this.modal?.id === id) this.modal={type:'match',id,error:true};}
       this.render();
+      if(this.modal?.type==='match' && this.modal.id===id && !this.modal.loading && !this.modal.error)
+        void this.loadMatchSquads(id,league);
     }
   }
   previewFixture(match) {
@@ -1652,7 +1794,7 @@ class FootballNewsPanel extends HTMLElement {
         <div class="squad-grid">${roster.map(p=>`<div class="player-card">
           <span class="player-stat-icon standard" aria-hidden="true">♟</span>
           <div class="player-card-copy"><b>${esc(p.name)}</b>
-            <span>${p.number?`#${esc(p.number)} · `:''}${esc(p.position||'')}${p.age?` · ${esc(p.age)} tuổi`:''}</span></div>
+            <span class="fn-club-player-meta">${fnPositionBadge(p.position_abbr||p.position)}${p.number?`<span>#${esc(p.number)}</span>`:''}${p.age?`<span>${esc(p.age)} ${this.locale==='vi'?'tuổi':'years'}</span>`:''}</span></div>
         </div>`).join('')}</div></section>`:''}`;
     } else {
       const candidate=this.leagues().flatMap(l=>(l.fixtures||[]).map(f=>({...f,league:l.league_code})))
@@ -1666,7 +1808,7 @@ class FootballNewsPanel extends HTMLElement {
       </div>`:'';
       const meta=[m.venue,m.attendance?`${this.t('attendance')}: ${m.attendance}`:'',m.weather,
         (m.officials||[]).map(o=>o.name).filter(Boolean).join(', ')].filter(Boolean);
-      const events=(m.events||[]).map((event,index)=>{
+      const events=fnTimelineNewestFirst(m.events||[]).map((event,index)=>{
         const kind=event.kind||'';
         const symbol=kind==='red_card'?'&#x1F7E5;':kind==='goal'?'⚽':kind==='card'?'🟨':kind==='substitution'?'🔁':kind==='start'?'▶':'•';
         return `<article class="event-item ${esc(kind)}">
@@ -1676,12 +1818,69 @@ class FootballNewsPanel extends HTMLElement {
             <p>${esc(event.description||'')}</p></div>
         </article>`;
       }).join('');
-      const stats=(m.teams||[]).filter(t=>t.statistics?.length).map(team=>`<section class="detail-stat-team"><h4>${esc(team.name)}</h4>
-        ${(team.statistics||[]).map(stat=>`<div class="detail-stat-row"><span>${esc(stat.label)}</span><b>${esc(stat.value)}</b></div>`).join('')}</section>`).join('');
-      const lineups=(m.lineups||[]).filter(t=>t.players?.length).map(team=>`<div class="lineup-team"><h4>${esc(team.team)}</h4><div class="lineup-players">${team.players.map(p=>`<span>${p.starter?'●':'○'} ${esc(p.number||'')} ${esc(p.name)} <small>${esc(p.position)}</small></span>`).join('')}</div></div>`).join('');
+      const comparison=fnMatchStatComparison(m.teams||[],candidate);
+      // Prefer ESPN's actual club crest from the match. When a summary omits
+      // it, reuse the fixture/standing badge for the same team in this league.
+      // Never infer a club from a different competition or invent a crest.
+      const lookupMatchLogo=this.teamLogoLookup(m.league);
+      const matchTeamLogo=(team)=>{
+        if(!team)return '';
+        const direct=fnESPNTeamLogo(team.logo||team.team_logo||'');
+        if(direct)return direct;
+        const id=String(team.team_id||team.id||'').trim();
+        const name=team.team||team.name||'';
+        const sources=[candidate?.home,candidate?.away,...(m.teams||[])].filter(t=>
+          t && fnESPNTeamLogo(t.logo||t.team_logo||''));
+        const idMatched=id?sources.find(t=>String(t.team_id||t.id||'')===id):null;
+        const nameMatched=!idMatched&&name?sources.find(t=>fnTeamNameKey(t.team||t.name)===fnTeamNameKey(name)):null;
+        const matched=idMatched||nameMatched;
+        return fnESPNTeamLogo(matched?.logo||'')||lookupMatchLogo({team_id:id,team:name});
+      };
+      const crestMarkup=logo=>`${logo?`<img src="${esc(logo)}" alt="" loading="lazy" decoding="async">`:''}
+        <span class="fn-crest-fallback" ${logo?'hidden':''} aria-hidden="true">${FN_NEUTRAL_CLUB_SVG}</span>`;
+      const teamHeading=(side,team)=>{
+        const fixtureTeam=side==='home'?candidate?.home:candidate?.away;
+        const name=fixtureTeam?.name||team?.name||'—';
+        const logo=matchTeamLogo(fixtureTeam)||matchTeamLogo(team);
+        const role=side==='home'?(this.locale==='vi'?'Đội chủ nhà':'Home team'):
+          (this.locale==='vi'?'Đội khách':'Away team');
+        return `<span class="fn-stat-team-head" aria-label="${esc(`${role}: ${name}`)}">
+          <span class="fn-stat-team-crest">${crestMarkup(logo)}</span>
+          <strong title="${esc(name)}">${esc(name)}</strong></span>`;
+      };
+      const stats=comparison.rows.length?`<div class="fn-match-stat-block"><table class="fn-match-stat-table">
+        <colgroup><col class="fn-stat-label-col"><col><col></colgroup>
+        <thead><tr><th scope="col">${esc(this.locale==='vi'?'Thông tin':'Statistic')}</th>
+          <th scope="col">${teamHeading('home',comparison.home)}</th>
+          <th scope="col">${teamHeading('away',comparison.away)}</th></tr></thead>
+        <tbody>${comparison.rows.map(row=>`<tr><th scope="row">${esc(row.label)}</th><td>${esc(row.home)}</td><td>${esc(row.away)}</td></tr>`).join('')}</tbody>
+      </table></div>`:'';
+      const playerRow=(p,roster=[])=>`<div class="fn-lineup-player">${fnPositionBadge(fnBestPosition(p,roster),true)}
+        <div class="fn-lineup-identity"><strong>${esc(p.name)}</strong>${p.number?`<small>#${esc(p.number)}</small>`:''}</div></div>`;
+      const lineups=(m.lineups||[]).filter(t=>t.players?.length).map(team=>{
+        const starters=team.players.filter(p=>p.status!=='unlisted' && (p.starter||p.status==='starter'));
+        const substitutes=team.players.filter(p=>p.status!=='unlisted' && !p.starter && p.status!=='starter');
+        const explicitlyUnlisted=team.players.filter(p=>p.status==='unlisted');
+        const calculated=fnSeasonUnlisted(team.players,m.seasonRosters?.[team.team_id]);
+        const unlisted=calculated===null?explicitlyUnlisted:[...explicitlyUnlisted,...calculated];
+        const section=(kind,title,players,empty)=>`<div class="fn-lineup-group fn-lineup-${kind}">
+          <div class="fn-lineup-group-title"><strong>${esc(title)}</strong><span>${players.length}</span></div>
+          ${players.length?`<div class="fn-lineup-players">${players.map(p=>playerRow(p,m.seasonRosters?.[team.team_id]||[])).join('')}</div>`:
+          `<p class="fn-lineup-note">${esc(empty)}</p>`}</div>`;
+        const badge=matchTeamLogo(team);
+        return `<div class="lineup-team"><h4 class="fn-lineup-team-heading">
+          <span class="fn-lineup-team-crest">${crestMarkup(badge)}</span>
+          <span>${esc(team.team)}</span></h4>
+          ${section('starting',this.locale==='vi'?'Đội hình xuất phát':'Starting XI',starters,this.locale==='vi'?'Chưa công bố':'Not announced')}
+          ${section('bench',this.locale==='vi'?'Cầu thủ dự bị':'Substitutes',substitutes,this.locale==='vi'?'Chưa công bố':'Not announced')}
+          ${section('unlisted',this.locale==='vi'?'Không có tên trong danh sách thi đấu':'Not named in match squad',unlisted,
+            this.locale==='vi'?'ESPN chưa cung cấp đủ dữ liệu để xác nhận.':'ESPN has not provided enough data to confirm.')}
+          ${calculated===null && !explicitlyUnlisted.length && m.rosterLoadState==='loading'?`<p class="fn-lineup-note">${esc(this.locale==='vi'?'Đang đối chiếu danh sách CLB…':'Comparing club roster…')}</p>`:''}
+        </div>`;
+      }).join('');
       contents=`${scoreboard}${meta.length?`<div class="match-metadata">${meta.map(item=>`<span>${esc(item)}</span>`).join('')}</div>`:''}
         ${events?`<section class="detail-section"><h3>⏱ ${this.t('events')} <small>(${(m.events||[]).length})</small></h3><div class="event-timeline">${events}</div></section>`:''}
-        ${stats?`<section class="detail-section"><h3>📊 ${this.t('statistics')}</h3><div class="detail-stat-grid">${stats}</div></section>`:''}
+        ${stats?`<section class="detail-section"><h3>📊 ${this.t('statistics')}</h3>${stats}</section>`:''}
         ${lineups?`<section class="detail-section"><h3>👥 ${this.t('squad')}</h3><div class="lineup-grid">${lineups}</div></section>`:''}
         ${!events&&!stats&&!lineups?`<div class="quiet">${this.t('noDetails')}</div>`:''}`;
     }
@@ -1887,7 +2086,7 @@ class FootballNewsPanel extends HTMLElement {
     const existing = this.shadowRoot.querySelector?.('.app');
     // Simple ShadowRoot mocks in the existing unit suite have no DOM parser.
     if (!existing || typeof document === 'undefined' || typeof document.createElement !== 'function') {
-      const styles = `${STYLE}${MORE_STYLE}${UI_V8_STYLE}${PREVIEW_STYLE}${FN_FIRST_OPEN_STYLE}${ROUND_STYLE}${V12_STYLE}${V13_STYLE}${LEADER_LAYOUT_STYLES}${V18_BADGE_STYLES}${V19_RESPONSIVE_LEADERS}${V20_HEADING_STYLES}${FN_V23_DESIGN_STYLES}${FN_V24_FULL_REDESIGN_STYLES}${FN_V26_POLISH}${FN_V27_LAYOUT_POLISH}${FN_V29_LAYOUT_POLISH}${FN_V31_FIXTURE_POSTER}${FN_V32_TOAST_COMPACT}${FN_V33_INTERACTION_STYLES}${FN_LIVE_POPUP_STYLES}${FN_DIAGNOSTIC_STYLES}${FN_FAVOURITE_OVERVIEW_STYLES}`;
+      const styles = `${STYLE}${MORE_STYLE}${UI_V8_STYLE}${PREVIEW_STYLE}${FN_FIRST_OPEN_STYLE}${ROUND_STYLE}${V12_STYLE}${V13_STYLE}${LEADER_LAYOUT_STYLES}${V18_BADGE_STYLES}${V19_RESPONSIVE_LEADERS}${V20_HEADING_STYLES}${FN_V23_DESIGN_STYLES}${FN_V24_FULL_REDESIGN_STYLES}${FN_V26_POLISH}${FN_V27_LAYOUT_POLISH}${FN_V29_LAYOUT_POLISH}${FN_V31_FIXTURE_POSTER}${FN_V32_TOAST_COMPACT}${FN_V33_INTERACTION_STYLES}${FN_LIVE_POPUP_STYLES}${FN_DIAGNOSTIC_STYLES}${FN_FAVOURITE_OVERVIEW_STYLES}${FN_MATCH_DETAIL_V34_STYLES}${FN_MATCH_DETAIL_V35_STYLES}`;
       this.shadowRoot.innerHTML = `<style>${styles}</style>${markup}`;
       this._renderedView = `${this.tab}|${this.selectedLeague}`;
       this._renderedModal = this.modal ? `${this.modal.type}|${this.modal.id||this.modal.team_id||''}` : '';
@@ -2084,7 +2283,7 @@ class FootballNewsPanel extends HTMLElement {
       ${body||(!setupNotice && noSavedData?
         `<section class="fn-hydration" role="status" aria-live="polite"><div><strong>${esc(this.locale==='vi'?'Chưa có dữ liệu đã lưu trên Home Assistant':'No saved Home Assistant data yet')}</strong><p>${esc(this._espnWaitSeconds>0?`Lần đầu cài đặt hoặc cache không còn hợp lệ. Đang ưu tiên kiểm tra HA Store; ESPN sẽ được thử sau khoảng ${Math.ceil(this._espnWaitSeconds)} giây. Bạn có thể ở nguyên trang.`:'Đã kiểm tra HA Store nhưng chưa có dữ liệu hợp lệ. Đang chờ ESPN đồng bộ lần đầu; trang sẽ tự hiển thị khi nhận được kết quả.')}</p><button type="button" data-restore-cache>Đọc lại cache HA</button></div></section>`:
         !setupNotice && !liveFeedReady && (this._needsHydration || this.tab==='overview')?
-        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||'đang kết nối'))}</p>${this._serverVersion && this._serverVersion!=='2026.11.21.2'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
+        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||'đang kết nối'))}</p>${this._serverVersion && this._serverVersion!=='2026.11.21.6'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
         `<div class="quiet">${esc(this.t(this.tab==='live'?'noLive':'none'))}</div>`)}
                 </div>
                 <div class="fn-dialog-host">${this.modalMarkup()}</div>
@@ -2693,6 +2892,88 @@ const FN_FAVOURITE_OVERVIEW_STYLES = `
  .favourite-form-head small{max-width:none;margin-left:42px;width:calc(100% - 42px);text-align:left}
  .favourite-form-item .form-row{margin-left:0;gap:3px}
  .favourite-form-item .form-token{width:26px;height:26px}}
+`;
+
+// Match detail v34: latest first, labelled match-sheet groups, clear position chips.
+const FN_MATCH_DETAIL_V34_STYLES = `
+.app .event-item:first-child .event-content{border-color:color-mix(in srgb,var(--skin-primary) 50%,var(--arena-line));background:linear-gradient(105deg,var(--skin-faint),var(--fn-bg))}
+.app .lineup-team{padding:14px;background:rgba(7,14,34,.72)}
+.app .lineup-team>h4{font-size:16px;padding:0 0 12px;border-bottom:1px solid var(--arena-line)}
+.app .fn-lineup-group{margin:12px 0 18px;border-radius:13px;border:1px solid var(--arena-line);overflow:hidden}
+.app .fn-lineup-group-title{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;font-size:13px;background:rgba(255,255,255,.04);gap:8px}
+.app .fn-lineup-group-title strong{color:#fff;font-weight:900}
+.app .fn-lineup-group-title>span{border-radius:8px;background:rgba(255,255,255,.12);padding:2px 9px;font-weight:850;font-variant-numeric:tabular-nums}
+.app .fn-lineup-starting{border-color:rgba(74,222,128,.37)}
+.app .fn-lineup-starting .fn-lineup-group-title{background:rgba(45,148,99,.16)}
+.app .fn-lineup-bench{border-color:rgba(93,161,255,.37)}
+.app .fn-lineup-bench .fn-lineup-group-title{background:rgba(46,95,169,.19)}
+.app .fn-lineup-unlisted{border-color:rgba(173,183,205,.27)}
+.app .fn-lineup-unlisted .fn-lineup-group-title{background:rgba(109,116,139,.13)}
+.app .fn-lineup-players{display:flex;flex-direction:column;gap:0;padding:2px 10px}
+.app .fn-lineup-player{display:grid;grid-template-columns:45px minmax(0,1fr);align-items:center;gap:10px;min-width:0;padding:9px 2px;border-bottom:1px solid var(--arena-line)}
+.app .fn-lineup-player:last-child{border-bottom:0}
+.app .fn-lineup-identity{min-width:0;display:flex;gap:3px;flex-direction:column}
+.app .fn-lineup-identity strong{color:#f6f8ff;font-size:13px;line-height:1.35;overflow-wrap:anywhere}
+.app .fn-lineup-identity small{font-size:11px;color:#a8b8d6}
+.app .fn-position-badge{min-width:37px;max-width:max-content;display:inline-flex;justify-content:center;align-items:center;padding:5px 7px;line-height:1.15;border-radius:9px;border:1px solid rgba(255,255,255,.4);color:#fff;font-weight:950;font-size:12px;letter-spacing:.35px;background:#4c5574;text-align:center;white-space:nowrap}
+.app .fn-role-goalkeeper{background:#7d5817;border-color:#f4bd4e;color:#fff2ca}
+.app .fn-role-defence{background:#174e82;border-color:#5aaaf8;color:#dbf0ff}
+.app .fn-role-midfield{background:#59368d;border-color:#b48cf3;color:#f3e9ff}
+.app .fn-role-forward{background:#963c56;border-color:#f08aa0;color:#fff0f4}
+.app .fn-lineup-note{color:#aebbd6;font-size:12px;line-height:1.55;margin:0;padding:11px 12px}
+.app .fn-club-player-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;color:#b7c6e0}
+.app .fn-club-player-meta .fn-position-badge{min-width:32px;font-size:11px;padding:3px 6px}
+@media(max-width:600px){
+ .app .lineup-team{padding:11px}
+ .app .fn-lineup-group{margin:10px 0 13px}
+ .app .fn-position-badge{font-size:11px;min-width:34px}
+}
+`;
+
+
+// Match detail v35: one three-column statistics comparison; readable two-column player rows.
+const FN_MATCH_DETAIL_V35_STYLES = `
+.app .fn-match-stat-block{min-width:0;max-width:100%;border:1px solid var(--arena-line);border-radius:14px;overflow:hidden;background:rgba(7,14,34,.72)}
+.app .fn-match-stat-table{width:100%;table-layout:fixed;border-collapse:collapse;color:#f3f6ff;white-space:normal;font-variant-numeric:tabular-nums}
+.app .fn-match-stat-table .fn-stat-label-col{width:40%}
+.app .fn-match-stat-table thead{background:rgba(75,95,151,.19)}
+.app .fn-match-stat-table th,.app .fn-match-stat-table td{padding:12px 9px;border-bottom:1px solid var(--arena-line);vertical-align:middle}
+.app .fn-match-stat-table thead th{font-weight:800;text-align:center;overflow-wrap:break-word;line-height:1.4}
+.app .fn-match-stat-table thead th:first-child{text-align:left}
+.app .fn-match-stat-table tbody th{font-weight:600;color:#bac9e2;text-align:left;overflow-wrap:break-word}
+.app .fn-match-stat-table tbody td{text-align:center;font-weight:850;font-size:15px;overflow-wrap:break-word;color:#f3f6ff}
+.app .fn-match-stat-table tbody tr:last-child>*{border-bottom:0}
+.app .fn-match-stat-table tbody tr:nth-child(even){background:rgba(255,255,255,.025)}
+.app .fn-stat-team-head{display:flex;align-items:center;flex-direction:column;justify-content:center;gap:5px;min-width:0;width:100%;text-transform:none;letter-spacing:normal}
+.app .fn-stat-team-crest{display:flex;align-items:center;justify-content:center;width:48px;height:48px;max-width:100%;flex:none;color:#9fb4e7}
+.app .fn-stat-team-crest img{width:100%;height:100%;object-fit:contain}
+.app .fn-stat-team-crest svg{width:35px;height:35px}
+.app .fn-crest-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+.app .fn-crest-fallback[hidden]{display:none}
+.app .fn-stat-team-crest img[hidden],.app .fn-lineup-team-crest img[hidden]{display:none}
+.app .fn-match-stat-table thead .fn-stat-team-head strong{display:block;margin:0;font-size:11px;font-weight:700;line-height:1.25;overflow-wrap:break-word;white-space:normal;word-break:normal;text-transform:none;letter-spacing:normal;color:#c7d4f0}
+.app .lineup-team>h4.fn-lineup-team-heading{display:flex;align-items:center;gap:10px;min-width:0;font-size:15px;line-height:1.3}
+.app .fn-lineup-team-crest{display:flex;align-items:center;justify-content:center;flex:0 0 38px;width:38px;height:38px;color:#9fb4e7}
+.app .fn-lineup-team-crest img{width:100%;height:100%;object-fit:contain}
+.app .fn-lineup-team-crest svg{width:28px;height:28px}
+.app .fn-lineup-team-heading>span:last-child{min-width:0;overflow-wrap:break-word}
+.app .lineup-grid{grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
+.app .lineup-team,.app .fn-lineup-group,.app .fn-lineup-players{min-width:0;width:100%}
+.app .fn-lineup-player{display:grid;grid-template-columns:47px minmax(0,1fr);min-width:0;width:100%;align-items:center;gap:12px}
+.app .fn-lineup-identity{min-width:0;width:100%}
+.app .fn-lineup-identity strong{display:block;font-size:14px;line-height:1.4;word-break:normal;overflow-wrap:break-word;white-space:normal}
+.app .fn-lineup-player .fn-position-badge{width:43px;min-width:43px;max-width:43px;min-height:32px;padding:5px 3px;font-size:11px;flex-shrink:0}
+@media(max-width:760px){.app .lineup-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){
+ .app .fn-match-stat-table .fn-stat-label-col{width:38%}
+ .app .fn-match-stat-table th,.app .fn-match-stat-table td{padding:10px 6px;font-size:12px}
+ .app .fn-match-stat-table tbody td{font-size:14px}
+ .app .fn-stat-team-crest{width:42px;height:42px}
+ .app .fn-match-stat-table thead .fn-stat-team-head strong{font-size:clamp(9px,2.5vw,10px)}
+ .app .fn-lineup-team-crest{flex-basis:34px;width:34px;height:34px}
+ .app .fn-lineup-player{grid-template-columns:43px minmax(0,1fr);gap:10px}
+ .app .fn-lineup-player .fn-position-badge{width:40px;min-width:40px;max-width:40px;font-size:10px}
+}
 `;
 
 if(!customElements.get('football-news-panel')) customElements.define('football-news-panel',FootballNewsPanel);
