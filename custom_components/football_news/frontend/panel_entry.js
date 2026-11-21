@@ -1,7 +1,7 @@
-/** Home Assistant custom panel bootstrap, v2026.11.21.1. */
+/** Home Assistant custom panel bootstrap, v2026.11.21.2. */
 const PANEL_TAG = 'football-news-panel';
 try {
-  await import('./panel.js?v=2026.11.21.1');
+  await import('./panel.js?v=2026.11.21.2');
   if (!customElements.get(PANEL_TAG)) {
     throw new Error('The panel module did not register football-news-panel');
   }

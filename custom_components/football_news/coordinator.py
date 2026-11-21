@@ -60,6 +60,32 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._live_event_task: asyncio.Task | None = None
         self._live_event_cursor = 0
         self._live_events_stopped = False
+        # Cache-first grace period does not block integration setup or HA Store.
+        # It only gates *automatic ESPN requests* after each entry loads.
+        # Enabled by the HA config-entry setup hook, not bare coordinator
+        # construction; integration tests and explicitly constructed workers
+        # continue to support manual refresh without artificial waits.
+        self._espn_hold_until = 0.0
+        self._first_panel_seen = False
+
+    def note_panel_visit(self) -> None:
+        """Extend the first cache-only interval to 120s after first visit.
+
+        Repeat requests and reloads cannot postpone ESPN indefinitely. Once
+        background polling has already succeeded, it remains uninterrupted.
+        """
+        if not self._first_panel_seen:
+            self._first_panel_seen = True
+            if not self._attempted_refresh:
+                self._espn_hold_until = max(self._espn_hold_until, monotonic() + 120)
+
+    def begin_cache_first_window(self, seconds: int = 120) -> None:
+        self._espn_hold_until = monotonic() + max(0, seconds)
+
+    def espn_wait_seconds(self) -> int:
+        """Seconds until automatic upstream requests are permitted."""
+        import math
+        return max(0, math.ceil(self._espn_hold_until - monotonic()))
 
     def _snapshot(self, errors: list[str] | None = None) -> dict[str, Any]:
         return {
@@ -153,6 +179,12 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self.async_restore_cache()
         async with self._history_lock:
             known = list(self._history_rows) + list(self._data.get("fixtures", []))
+            if self.espn_wait_seconds():
+                # No additional month requests while the initial HA Store
+                # snapshot is being presented. Existing saved form remains
+                # visible and the frontend retries once the grace expires.
+                return {"fixtures": known[:100], "complete": False, "partial": True,
+                        "deferred": True}
             result = await self.provider.favourite_form_history(team_ids, known)
             if result.get("fixtures"):
                 merged = {str(item["id"]): item for item in self._history_rows
@@ -176,6 +208,8 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if (self._leader_rows and self._leader_updated and
                     datetime.now(timezone.utc) - self._leader_updated < timedelta(hours=6)):
                 return self._leader_rows, bool("leaders" in self._restored_datasets)
+            if self.espn_wait_seconds():
+                return self._leader_rows, True
             try:
                 rows = await self.provider.leaders()
             except ProviderError:
@@ -328,6 +362,13 @@ class FootballNewsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """ESPN refresh runs after startup; last-good datasets survive errors."""
         await self.async_restore_cache()
+        remaining = self.espn_wait_seconds()
+        if remaining:
+            self.update_interval = timedelta(seconds=remaining)
+            self._last_visible_change = False
+            _LOGGER.debug("Football News skipped early ESPN request league=%s remaining=%ss",
+                          self.provider.league, remaining)
+            return self._snapshot()
         old_plan = self._poll_plan
         self._poll_plan = self._choose_plan(self._data["fixtures"])
         tasks = {

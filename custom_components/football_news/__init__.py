@@ -66,6 +66,15 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
     # Home Assistant startup; no ESPN/network request is made here.
     startup_pending = not getattr(hass, "is_running", True)
     runtimes = hass.data.get(DOMAIN, {}).get("entries", {})
+    # The very first panel visit gets its own full 120-second grace period.
+    # Subsequent tabs/reloads must not restart the clock or interrupt ongoing
+    # Live polling on a previously refreshed Home Assistant installation.
+    for runtime in runtimes.values():
+        if isinstance(runtime, dict):
+            coordinator = runtime.get("coordinator")
+            visit = getattr(coordinator, "note_panel_visit", None)
+            if callable(visit):
+                visit()
     # Cold HA startup and browser refresh are two different problems. A normal
     # snapshot can wait for several HA Store files; deliver a *RAM-only* first
     # paint in a separate short WebSocket request. A browser refresh must not
@@ -81,8 +90,66 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
                 if entry.entry_id not in known:
                     quick_entries.append(entry)
                     known.add(entry.entry_id)
-        rows = competition_snapshot(quick_entries, runtimes, LEAGUES)
+        # If HA's config-entry registry has not materialized yet, an existing
+        # saved HA league index can still identify persisted cache files.
+        # This quick fallback is local-only and has a strict budget; the full
+        # snapshot can reconcile the registry and preferences asynchronously.
+        saved_without_registry = {}
+        if not quick_entries:
+            registry = hass.data.get(DOMAIN, {}).get("league_registry")
+            if registry is not None:
+                try:
+                    quick_entries = await asyncio.wait_for(
+                        asyncio.shield(registry.fallback_entries()), timeout=2)
+                except Exception:
+                    _LOGGER.debug("Football News quick HA league index not yet available")
+            if not quick_entries:
+                recovery = hass.data.get(DOMAIN, {}).get("saved_cache_recovery")
+                if recovery is not None:
+                    try:
+                        recovered = await asyncio.wait_for(
+                            asyncio.shield(recovery.async_snapshots()), timeout=3)
+                        quick_entries = [entry for entry, snapshot in recovered]
+                        saved_without_registry = {entry.entry_id: snapshot for entry, snapshot in recovered}
+                    except Exception:
+                        _LOGGER.debug("Football News quick saved HA snapshot discovery not yet available")
+        rows = competition_snapshot(quick_entries, runtimes, LEAGUES, saved_without_registry)
+        # RAM alone is NOT a first-open cache. When HA is still hydrating an
+        # entry, the very first browser request must be able to read its saved
+        # Store file without going through registry/preferences/ESPN. Read all
+        # missing leagues concurrently and keep Store single-flight tasks
+        # alive if this request reaches its short local time budget.
+        cold = hass.data.get(DOMAIN, {}).get("cold_cache")
+        disk_fallbacks = dict(saved_without_registry)
+        pending_cache = False
+        if cold is not None and quick_entries and any(not row.get("ready") for row in rows):
+            ready = {row["entry_id"] for row in rows if row.get("ready")}
+            missing = [entry for entry in quick_entries if entry.entry_id not in ready]
+            async def read_local(entry):
+                try:
+                    return entry.entry_id, await cold.async_entry_snapshot(entry)
+                except Exception as err:
+                    _LOGGER.warning("Football News first-view HA Store read failed league=%s error=%s",
+                                    entry.data.get("league"), type(err).__name__)
+                    return entry.entry_id, {}
+            tasks = [asyncio.create_task(read_local(entry)) for entry in missing]
+            done, pending = await asyncio.wait(tasks, timeout=3)
+            pending_cache = bool(pending)
+            for task in done:
+                entry_id, cached = task.result()
+                if cached:
+                    disk_fallbacks[entry_id] = cached
+            # Pending reads are allowed to finish after the WebSocket response.
+            # A later retry can retrieve them from the same cold-cache index.
+            rows = competition_snapshot(quick_entries, runtimes, LEAGUES, disk_fallbacks)
         selected = next((row for row in rows if row.get("ready")), None) or (rows[0] if rows else {})
+        cache_state = ("available" if any(row.get("ready") for row in rows) else
+                       "restoring" if pending_cache or startup_pending else
+                       "empty" if quick_entries else "pending_setup")
+        wait_seconds = max((runtime["coordinator"].espn_wait_seconds()
+                            for runtime in runtimes.values()
+                            if isinstance(runtime, dict) and
+                            callable(getattr(runtime.get("coordinator"), "espn_wait_seconds", None))), default=0)
         connection.send_result(msg["id"], {
             "leagues": rows,
             "fixtures": selected.get("fixtures", []),
@@ -94,6 +161,8 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
             "configured_count": len(quick_entries),
             "startup_pending": startup_pending,
             "bootstrap_partial": True,
+            "cache_state": cache_state,
+            "espn_wait_seconds": wait_seconds,
             "backend_version": VERSION,
             "recovery_status": {"native_entries": len(configured), "restored_feeds": sum(bool(
                 row.get("fixtures") or row.get("standings") or row.get("news")) for row in rows)},
@@ -301,6 +370,12 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         "registry_source": "saved_cache_files" if recovered_saved else (
             "saved_ha" if registry_fallback else "config_entries"),
         "backend_version": VERSION,
+        "cache_state": ("available" if any(row.get("ready") for row in leagues) else
+                        "empty" if configured else "pending_setup"),
+        "espn_wait_seconds": max((runtime["coordinator"].espn_wait_seconds()
+                                  for runtime in runtimes.values()
+                                  if isinstance(runtime, dict) and
+                                  callable(getattr(runtime.get("coordinator"), "espn_wait_seconds", None))), default=0),
         "recovery_status": {
             "native_entries": len(hass.config_entries.async_entries(DOMAIN)),
             "saved_only_entries": len(recovered_saved),
@@ -750,6 +825,7 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
         _LOGGER.info("Football News removed obsolete player-provider settings league=%s", league)
     provider = FootballProvider(async_get_clientsession(hass), league)
     coordinator = FootballNewsCoordinator(hass, entry, provider)
+    coordinator.begin_cache_first_window(120)
     notifier = ZaloNotifier(hass, entry, LEAGUES.get(league, league))
     coordinator.notifier = notifier
     entry.runtime_data = {"coordinator": coordinator, "notifier": notifier}
@@ -780,8 +856,20 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
 
     @callback
     def start_refresh(event=None):
-        hass.async_create_task(coordinator.async_refresh())
-        hass.async_create_task(hass.data[DOMAIN]["preferences"].read())
+        # The first two minutes are *cache only*: the UI must see saved HA
+        # Store data before upstream ESPN requests can replace any feed.
+        # This is an async task, never a wait inside Home Assistant startup.
+        async def refresh_after_cache_window():
+            # A user opening the panel during HA startup can extend this once.
+            # Re-evaluate after each sleep, not just at task creation.
+            while (seconds := coordinator.espn_wait_seconds()):
+                _LOGGER.info("Football News cache-first window league=%s waiting=%ss before ESPN",
+                             league, seconds)
+                await asyncio.sleep(seconds)
+            await coordinator.async_refresh()
+            await hass.data[DOMAIN]["preferences"].read()
+        task = hass.async_create_task(refresh_after_cache_window())
+        entry.async_on_unload(task.cancel)
 
     if hass.is_running:
         start_refresh()

@@ -1,4 +1,4 @@
-/* Football News v2026.11.21.1 - resilient first view, accurate empty Live, 20s notices. */
+/* Football News v2026.11.21.2 - resilient first view, accurate empty Live, 20s notices. */
 const FN_WORDS = {
   vi: {
     live:'Trực tiếp',fixtures:'Lịch thi đấu',results:'Kết quả',table:'Bảng xếp hạng',news:'Tin tức',overview:'Tổng quan',
@@ -459,6 +459,10 @@ class FootballNewsPanel extends HTMLElement {
     this._serverStatus = null;
     this._serverVersion = '';
     this._receivedSnapshot = false;
+    this._cacheState = 'restoring';
+    this._espnWaitSeconds = 0;
+    this._espnReadyAt = 0;
+    this._espnGraceTimer = null;
     this._emptySince = 0;
     this._retryCount = 0;
     this._retryTimer = null;
@@ -833,6 +837,8 @@ class FootballNewsPanel extends HTMLElement {
     clearInterval(this._timer);
     clearInterval(this._matchDetailTimer);
     if (this._retryTimer) clearTimeout(this._retryTimer);
+    if (this._espnGraceTimer) clearTimeout(this._espnGraceTimer);
+    this._espnGraceTimer = null;
     if (this._toastTimer) clearTimeout(this._toastTimer);
     if (this._liveTimer) clearTimeout(this._liveTimer);
     this._toastTimer = null;
@@ -937,8 +943,28 @@ class FootballNewsPanel extends HTMLElement {
       this._receivedSnapshot = true;
       this._serverVersion = data.backend_version || '';
       this._serverStatus = data.recovery_status || null;
-      if (this._serverVersion && this._serverVersion !== '2026.11.21.1') {
-        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.21.1', this._serverVersion);
+      this._cacheState = data.cache_state || 'restoring';
+      this._espnWaitSeconds = Math.max(0, Number(data.espn_wait_seconds) || 0);
+      this._espnReadyAt = Date.now() + this._espnWaitSeconds * 1000;
+      // The backend restores cache before requesting new ESPN data. Optional
+      // player/history endpoints are also deferred: a panel visit must not
+      // secretly start additional ESPN requests during this two-minute window.
+      if (this._espnWaitSeconds > 0 && !this._espnGraceTimer && typeof setTimeout==='function') {
+        this._espnGraceTimer=setTimeout(() => {
+          this._espnGraceTimer=null;
+          if (!this.isConnected) return;
+          void this.load();
+          const league=this.previewLeague()?.league_code;
+          if (league && ['overview','leaders','table'].includes(this.tab)) void this.loadLeaders(league);
+          if (this.tab==='overview') void this.loadFavouriteForm(league);
+          if (this.tab==='clubs') {
+            if (this.selectedLeague!=='all') void this.loadTeams();
+            void this.loadFavouriteClubBriefs();
+          }
+        }, Math.min(125000, this._espnWaitSeconds * 1000 + 1200));
+      }
+      if (this._serverVersion && this._serverVersion !== '2026.11.21.2') {
+        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.21.2', this._serverVersion);
       }
       // HA can dispatch its custom panel before config entries have been
       // restored. Probe a few times before showing the real empty-setup guide.
@@ -1036,6 +1062,7 @@ class FootballNewsPanel extends HTMLElement {
     }
   }
   async loadLeaders(league = this.previewLeague()?.league_code) {
+    if (Date.now() < this._espnReadyAt) return;
     const old=this.leaderCache[league];
     if (!league || (old && !old.error && (old.loading || !old.savedAt ||
         Date.now()-old.savedAt < LEADER_TTL_MS))) return;
@@ -1058,6 +1085,7 @@ class FootballNewsPanel extends HTMLElement {
     return clubs.map(c=>String(c.id)).sort().join(',');
   }
   async loadFavouriteForm(league=this.previewLeague()?.league_code) {
+    if (Date.now() < this._espnReadyAt) return;
     if (!league || this.tab!=='overview' || !this.isConnected || !this._hass) return;
     const clubs=this.favouriteClubsForLeague(league);
     if(!clubs.length) return;
@@ -1087,6 +1115,7 @@ class FootballNewsPanel extends HTMLElement {
     if (this.isConnected && this.tab==='overview') this.render();
   }
   async loadTeams() {
+    if (Date.now() < this._espnReadyAt) return;
     if(this.selectedLeague==='all' || (this.teamCache[this.selectedLeague] &&
        !this.teamCache[this.selectedLeague].error))return;
     const league=this.selectedLeague;
@@ -1098,6 +1127,7 @@ class FootballNewsPanel extends HTMLElement {
   // Team summaries are requested only while the user views favourite clubs.
   // At most two requests run concurrently; no extra HA startup I/O.
   async loadFavouriteClubBriefs() {
+    if (Date.now() < this._espnReadyAt) return;
     const favourites = this.clubsForSelectedLeague().filter(c=>c.id && c.league);
     const queue = favourites.filter(c=>!this.clubCache[`${c.league}:${c.id}`] &&
       !this._clubBriefPending.has(`${c.league}:${c.id}`));
@@ -1985,6 +2015,7 @@ class FootballNewsPanel extends HTMLElement {
     const bootstrapNotice = this._registryPending && !leagueRows.length && this.tab!=='overview'?
       `<section class="fn-ha-diagnostic" role="status">Đang tìm dữ liệu trên Home Assistant · Backend: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải cấu hình: ${this._serverStatus.native_entries}, cache hợp lệ: ${this._serverStatus.restored_feeds}`:(this.error||'đang kết nối'))} <button type="button" data-restore-cache>Đọc lại cache HA</button></section>`:'';
     const hasCachedFeed=leagueRows.some(l=>["fixtures","standings","news"].some(k=>(l[k]||[]).length));
+    const noSavedData = leagueRows.length>0 && !hasCachedFeed && this._cacheState==='empty';
     const cachedLeaders=this.leaderCache[this.previewLeague()?.league_code]?.from_cache;
     const notices=[];
     const addToast=(key,kind,title,message,action='')=>notices.push({key,kind,title,message,action});
@@ -2006,7 +2037,7 @@ class FootballNewsPanel extends HTMLElement {
       addToast('pending','info',this.locale==='vi'?'Đang cập nhật dữ liệu':'Loading data',this.t('waiting'));
     if(this._showingCached && leagueRows.length) addToast('snapshot','cache',
       this.locale==='vi'?'Đang dùng dữ liệu lưu tạm':'Showing cached data',
-      `${this._snapshotAt ? `${this.date(new Date(this._snapshotAt).toISOString())}. ` : ''}${this.locale==='vi'?'Đang thử kết nối lại với ESPN.':'Retrying the ESPN connection.'}`);
+      `${this._snapshotAt ? `${this.date(new Date(this._snapshotAt).toISOString())}. ` : ''}${this._espnWaitSeconds>0?'Đang ưu tiên cache Home Assistant; ESPN tự cập nhật sau.':(this.locale==='vi'?'Đang thử kết nối lại với ESPN.':'Retrying the ESPN connection.')}`);
     if(cachedLeaders)
       addToast('leaders','cache',this.locale==='vi'?'Thống kê cầu thủ từ cache':'Cached player statistics',
         this.locale==='vi'?'Đang chờ ESPN cập nhật dữ liệu cầu thủ.':'Waiting for updated player statistics from ESPN.');
@@ -2050,8 +2081,10 @@ class FootballNewsPanel extends HTMLElement {
                 <div class="fn-page-view">
       ${this.tab==='clubs'?`<div class="fav-launch"><small>${favourites.length}/5 ${this.t('favourites')}</small></div>`:''}
       ${setupNotice}${bootstrapNotice}
-      ${body||(!setupNotice && !liveFeedReady && (this._needsHydration || this.tab==='overview')?
-        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||'đang kết nối'))}</p>${this._serverVersion && this._serverVersion!=='2026.11.21.1'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
+      ${body||(!setupNotice && noSavedData?
+        `<section class="fn-hydration" role="status" aria-live="polite"><div><strong>${esc(this.locale==='vi'?'Chưa có dữ liệu đã lưu trên Home Assistant':'No saved Home Assistant data yet')}</strong><p>${esc(this._espnWaitSeconds>0?`Lần đầu cài đặt hoặc cache không còn hợp lệ. Đang ưu tiên kiểm tra HA Store; ESPN sẽ được thử sau khoảng ${Math.ceil(this._espnWaitSeconds)} giây. Bạn có thể ở nguyên trang.`:'Đã kiểm tra HA Store nhưng chưa có dữ liệu hợp lệ. Đang chờ ESPN đồng bộ lần đầu; trang sẽ tự hiển thị khi nhận được kết quả.')}</p><button type="button" data-restore-cache>Đọc lại cache HA</button></div></section>`:
+        !setupNotice && !liveFeedReady && (this._needsHydration || this.tab==='overview')?
+        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||'đang kết nối'))}</p>${this._serverVersion && this._serverVersion!=='2026.11.21.2'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
         `<div class="quiet">${esc(this.t(this.tab==='live'?'noLive':'none'))}</div>`)}
                 </div>
                 <div class="fn-dialog-host">${this.modalMarkup()}</div>
