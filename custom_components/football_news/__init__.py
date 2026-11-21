@@ -53,7 +53,7 @@ def _league_runtime(hass: HomeAssistant, league: str):
     return None
 
 
-@websocket_api.websocket_command({"type": "football_news/data", probatio.Optional("entry_id"): str})
+@websocket_api.websocket_command({"type": "football_news/data", probatio.Optional("entry_id"): str, probatio.Optional("fast"): bool})
 @websocket_api.async_response
 async def ws_get_data(hass: HomeAssistant, connection, msg):
     """Authenticated frontend snapshot, without leaking Zalo destination IDs."""
@@ -65,13 +65,59 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
     # registry. A bounded local wait only affects this WebSocket request, never
     # Home Assistant startup; no ESPN/network request is made here.
     startup_pending = not getattr(hass, "is_running", True)
+    runtimes = hass.data.get(DOMAIN, {}).get("entries", {})
+    # Cold HA startup and browser refresh are two different problems. A normal
+    # snapshot can wait for several HA Store files; deliver a *RAM-only* first
+    # paint in a separate short WebSocket request. A browser refresh must not
+    # block on persisted preferences, an incomplete registry or ESPN. The
+    # frontend always follows this bootstrap response with the authoritative
+    # full snapshot, so account settings and favourite clubs are not lost.
+    if msg.get("fast"):
+        quick_entries = list(configured)
+        known = {entry.entry_id for entry in quick_entries}
+        for runtime in runtimes.values():
+            if isinstance(runtime, dict) and runtime.get("entry") is not None:
+                entry = runtime["entry"]
+                if entry.entry_id not in known:
+                    quick_entries.append(entry)
+                    known.add(entry.entry_id)
+        rows = competition_snapshot(quick_entries, runtimes, LEAGUES)
+        selected = next((row for row in rows if row.get("ready")), None) or (rows[0] if rows else {})
+        connection.send_result(msg["id"], {
+            "leagues": rows,
+            "fixtures": selected.get("fixtures", []),
+            "standings": selected.get("standings", []),
+            "news": selected.get("news", []),
+            "updated_at": selected.get("updated_at", {}),
+            "preferences": {"clubs": [], "matches": [], "leagues": []},
+            "ui_state": {"tab": "overview", "league": "all", "style": "auto", "revision": -1},
+            "configured_count": len(quick_entries),
+            "startup_pending": startup_pending,
+            "bootstrap_partial": True,
+            "backend_version": VERSION,
+            "recovery_status": {"native_entries": len(configured), "restored_feeds": sum(bool(
+                row.get("fixtures") or row.get("standings") or row.get("news")) for row in rows)},
+            "admin": bool(connection.user and connection.user.is_admin),
+        })
+        return
+    # A full snapshot may wait briefly for HA's config entry registry. The
+    # RAM-only fast response above must never wait for this cold-start probe.
     if not configured and startup_pending:
         for _ in range(4):
             await asyncio.sleep(0.25)
             configured = list(hass.config_entries.async_entries(DOMAIN))
             if configured:
                 break
-    runtimes = hass.data.get(DOMAIN, {}).get("entries", {})
+        runtimes = hass.data.get(DOMAIN, {}).get("entries", {})
+    # Optional stores read in parallel with league/cache restoration instead
+    # of adding up to eight seconds of serialized disk waits after the result.
+    preference_store = hass.data.get(DOMAIN, {}).get("preferences")
+    preferences_task = (asyncio.create_task(preference_store.read())
+                        if preference_store is not None else None)
+    ui_store = hass.data.get(DOMAIN, {}).get("ui_state")
+    user_id = getattr(connection.user, "id", None)
+    ui_task = (asyncio.create_task(ui_store.read(user_id))
+               if ui_store is not None and user_id else None)
     if not configured and runtimes:
         # A transient HA config-entry registry rehydration must not hide loaded
         # competitions. Runtime entries are already owned by this integration.
@@ -81,12 +127,13 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
     registry_fallback = False
     if registry is not None:
         try:
-            if configured:
-                # In a reload only a *subset* of entries may have appeared.
-                # Record the confirmed entries and add persisted IDs not yet
-                # visible, rather than temporarily hiding their saved cache.
-                await asyncio.wait_for(registry.remember(configured), timeout=3)
-            historical = await asyncio.wait_for(registry.fallback_entries(), timeout=3)
+            async def registry_snapshot():
+                if configured:
+                    # One total bounded budget for Store read AND fallback.
+                    # Previously each got its own timeout, delaying first view.
+                    await registry.remember(configured)
+                return await registry.fallback_entries()
+            historical = await asyncio.wait_for(registry_snapshot(), timeout=4)
             known_ids = {entry.entry_id for entry in configured}
             missing = [entry for entry in historical if entry.entry_id not in known_ids]
             if missing:
@@ -118,7 +165,12 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
     runtime_snapshots = [
         (entry, runtime_for_entry(entry, runtimes)) for entry in configured
     ]
+    already_recovered = {entry.entry_id: snapshot for entry, snapshot in recovered_saved}
     async def cache_for_entry(entry, runtime):
+        # Emergency recovery already read and validated this Store document.
+        # Re-opening the same file delays the very first dashboard response.
+        if not runtime and entry.entry_id in already_recovered:
+            return entry.entry_id, already_recovered[entry.entry_id]
         if runtime and runtime.get("coordinator"):
             coordinator = runtime["coordinator"]
             # Once the coordinator has restored its HA Store, its in-memory
@@ -219,21 +271,18 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
             "updated_at": selected.get("updated_at", {}),
             "cache_info": selected.get("cache_info", {}),
             "errors": selected.get("errors", [])}
-    try:
-        preferences = await asyncio.wait_for(hass.data[DOMAIN]["preferences"].read(), timeout=4)
-    except Exception:
-        # Personal preferences are optional; do not make a disk-only football
-        # snapshot fail because an unrelated preferences Store is unavailable.
-        _LOGGER.warning("Football News preferences unavailable during snapshot")
-        preferences = {"clubs": [], "matches": [], "leagues": []}
-    # A missing store during an early websocket request is safe; production
-    # async_setup registers it, and the next panel read will hydrate it.
-    ui_state = {"tab": "overview", "league": "all", "style": "auto", "revision": 0}
-    ui_store = hass.data.get(DOMAIN, {}).get("ui_state")
-    user_id = getattr(connection.user, "id", None)
-    if ui_store is not None and user_id:
+    preferences = {"clubs": [], "matches": [], "leagues": []}
+    if preferences_task is not None:
         try:
-            ui_state = await asyncio.wait_for(ui_store.read(user_id), timeout=4)
+            preferences = await asyncio.wait_for(preferences_task, timeout=2)
+        except Exception as err:
+            _LOGGER.warning("Football News preferences unavailable during snapshot: %s", type(err).__name__)
+    # Profile preferences are optional and never allowed to block football
+    # cache restoration. Their reads started while the league files loaded.
+    ui_state = {"tab": "overview", "league": "all", "style": "auto", "revision": 0}
+    if ui_task is not None:
+        try:
+            ui_state = await asyncio.wait_for(ui_task, timeout=2)
         except Exception as err:
             _LOGGER.warning("Football News UI state read failed: %s", type(err).__name__)
     lang_entry = runtime["entry"] if runtime else (configured[0] if configured else None)

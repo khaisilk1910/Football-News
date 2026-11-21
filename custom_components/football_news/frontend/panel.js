@@ -1,4 +1,4 @@
-/* Football News v2026.11.20.7 - resilient first view, accurate empty Live, 20s notices. */
+/* Football News v2026.11.21.1 - resilient first view, accurate empty Live, 20s notices. */
 const FN_WORDS = {
   vi: {
     live:'Trực tiếp',fixtures:'Lịch thi đấu',results:'Kết quả',table:'Bảng xếp hạng',news:'Tin tức',overview:'Tổng quan',
@@ -481,6 +481,7 @@ class FootballNewsPanel extends HTMLElement {
     this._narrow = false;
     this._searchTeam = '';
     this._loading = false;
+    this._fastBootstrapDone = false;
     this._lastAttempt = 0;
     this._last = 0;
     this.error = '';
@@ -782,6 +783,9 @@ class FootballNewsPanel extends HTMLElement {
       this.unsubscribeSharedUpdates();
       this._retryCount = 0;
       this._lastAttempt = 0;
+      // New HA socket after Android Companion login/reconnect must receive
+      // its own fast first-paint request. The old connection may be dead.
+      this._fastBootstrapDone = false;
     }
     if (this.isConnected) this.subscribeSharedUpdates();
     // HA can assign hass *after* connectedCallback or replace the socket
@@ -912,13 +916,29 @@ class FootballNewsPanel extends HTMLElement {
     this._loading = true;
     this._lastAttempt = Date.now();
     try {
-      const data = await this.request({type:'football_news/data'},20000);
+      // First paint is a bounded RAM-only HA snapshot. On a normal browser
+      // reload the coordinator already holds its restored HA Store data, so
+      // waiting for disk/registry/account I/O again is unnecessary. Every
+      // successful fast response is followed by a full read for saved choices.
+      const fast = !this._fastBootstrapDone;
+      let data;
+      try {
+        data = await this.request({type:'football_news/data',...(fast?{fast:true}:{})},
+          fast ? 9000 : 35000);
+      } catch (error) {
+        // Mixed-version Home Assistant frontends may keep an older backend
+        // active briefly after updating. Retry the original command rather
+        // than requiring the user to leave the sidebar and enter again.
+        if (!fast || !/unknown_command|invalid_format|extra keys|not allowed|unknown.*fast/i.test(String(error?.message||error))) throw error;
+        data = await this.request({type:'football_news/data'},35000);
+      }
       if (!Array.isArray(data?.leagues)) throw new Error('Phản hồi WebSocket thiếu danh sách giải đấu');
+      this._fastBootstrapDone = true;
       this._receivedSnapshot = true;
       this._serverVersion = data.backend_version || '';
       this._serverStatus = data.recovery_status || null;
-      if (this._serverVersion && this._serverVersion !== '2026.11.20.7') {
-        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.20.7', this._serverVersion);
+      if (this._serverVersion && this._serverVersion !== '2026.11.21.1') {
+        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.21.1', this._serverVersion);
       }
       // HA can dispatch its custom panel before config entries have been
       // restored. Probe a few times before showing the real empty-setup guide.
@@ -953,7 +973,7 @@ class FootballNewsPanel extends HTMLElement {
       // HA's `attempted` becomes true only AFTER the first ESPN refresh ends.
       // Keep asking the HA-local WebSocket while fixtures/tables are hydrating.
       const hasMatchOrTable = this.hasFootballContent(leagues);
-      const incomplete = !leagues.length || !hasMatchOrTable ||
+      const incomplete = Boolean(data.bootstrap_partial) || !leagues.length || !hasMatchOrTable ||
         leagues.some(l=>!l.ready || !l.runtime_loaded || l.attempted === false) || diskRestored;
       this._needsHydration = incomplete;
       this.data = {...DEFAULT_DATA, ...alive(data),leagues};
@@ -2031,7 +2051,7 @@ class FootballNewsPanel extends HTMLElement {
       ${this.tab==='clubs'?`<div class="fav-launch"><small>${favourites.length}/5 ${this.t('favourites')}</small></div>`:''}
       ${setupNotice}${bootstrapNotice}
       ${body||(!setupNotice && !liveFeedReady && (this._needsHydration || this.tab==='overview')?
-        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||'đang kết nối'))}</p>${this._serverVersion && this._serverVersion!=='2026.11.20.7'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
+        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||'đang kết nối'))}</p>${this._serverVersion && this._serverVersion!=='2026.11.21.1'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
         `<div class="quiet">${esc(this.t(this.tab==='live'?'noLive':'none'))}</div>`)}
                 </div>
                 <div class="fn-dialog-host">${this.modalMarkup()}</div>
