@@ -1,0 +1,51 @@
+name: Validate Football News
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Python / JavaScript / Marketplace checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Python unit tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -q
+      - name: JavaScript unit tests
+        run: |
+          for test in tests/*.mjs; do
+            node "$test"
+          done
+      - name: Validate Marketplace layout, version and WebSocket schemas
+        run: python scripts/check_marketplace.py
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+
+  hassfest:
+    name: Home Assistant integration validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
