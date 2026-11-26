@@ -1,3 +1,14 @@
+## 2026.11.26.3 — First open / Reload: WebSocket recovery and reliable HA Store retry
+
+- **Fix:** the **Đọc lại dữ liệu đã lưu** button now preempts a hung snapshot request instead of silently returning while `_loading` is true. Old WebSocket responses cannot erase a newer successful snapshot.
+- **Fix:** detect Companion socket replacement even when HA mutates the same `hass` object. Prefer Home Assistant's public `hass.callWS` facade.
+- **HA Store-first:** use a shared asynchronous HA Store read with a maximum **6-second fast / 10-second full** foreground budget. If storage is slow, return an explicit WebSocket response with server diagnostics and let the HA Store read finish in the background, then broadcast a data-updated event. No ESPN call is started by this path.
+- **Recovery:** bring a suspended/hidden mobile WebView back to a working state with bounded request deadlines, a page activation retry, and a 17-second stalled-read watchdog. Retain last-good data across retries.
+- **Diagnostics:** surface whether HA has supplied the `hass` object or if the backend WebSocket has not yet replied; log slow disk reads without printing sensitive data.
+- **Tests:** added regressions for a manual retry during a hung request, changing a socket on an in-place `hass` object, shared Store reads that exceed the foreground deadline, and Chromium mobile/desktop cold-panel recovery.
+
+**Compatibility:** Cache, config entries, per-league sensors, Live updates, and Zalo notifications are unchanged. Keep `.storage` intact. As before, an unavailable Home Assistant connection or an empty/invalid HA Store cannot supply football scores.
+
 ## 2026.11.26.2 — HA Store-first on every device and browser reload
 
 - The initial `football_news/data` WebSocket call now **reads persisted Home Assistant Store snapshots before coordinator RAM**, even when the coordinator is still starting. Stored fixtures, tables and news can be rendered on the first open without waiting for ESPN or a second navigation.

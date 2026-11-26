@@ -1,4 +1,4 @@
-# Football News: HA Store-first (2026.11.26.2)
+# Football News: HA Store-first (2026.11.26.3)
 
 When opening Football News on any device, `football_news/data` reads the
 validated snapshot from Home Assistant's `.storage/football_news_cache_<entry_id>`
@@ -32,3 +32,11 @@ Home Assistant config entries, current season and storage files. Do not delete
 `.storage` without making a backup. Successful unit/browser test simulations
 do not prove that a particular Home Assistant installation has healthy cache
 files or an operational WebSocket connection.
+
+## Khi nút đọc lại không phản hồi (2026.11.26.3)
+
+Trước đây nút "Đọc lại dữ liệu đã lưu" gọi `load()` nhưng `_loading=true` khiến lần đọc bị bỏ qua. Bản này dùng một phiên tải mới, hủy hiệu lực phản hồi cũ và đọc từ HA Store qua WebSocket.
+
+HA Store có thể trả lời chậm trên máy chủ bận hoặc khi mới khởi động. Đường đọc được giới hạn 6 giây (lần đọc nhanh) / 10 giây (đầy đủ) ở phía WebSocket; nếu vượt giới hạn, tác vụ lưu trữ vẫn tiếp tục ở nền và phát `football_news_data_updated` khi hoàn tất. Các thiết bị đã mở sẽ tự tải lại.
+
+Để chẩn đoán, bật `custom_components.football_news: debug` và tìm `Football News HA Store read still pending` hoặc `Football News first-view HA Store result`. Nếu frontend luôn báo **backend chưa phản hồi**, hãy kiểm tra xác thực và WebSocket của Home Assistant: trong trường hợp không có kết nối, không có cách nào đọc `.storage` từ trình duyệt.

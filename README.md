@@ -1,6 +1,6 @@
 # Football News · Chỉ sử dụng dữ liệu ESPN
 
-**Phiên bản 2026.11.21.4** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
+**Phiên bản 2026.11.26.3** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
 
 Football News sử dụng **ESPN** cho lịch thi đấu, kết quả, bảng xếp hạng, tin bóng đá và thống kê cầu thủ. Không yêu cầu API key hoặc tích hợp dữ liệu khác. Zalo Bot chỉ dùng để **gửi thông báo**, không cung cấp dữ liệu bóng đá.
 
@@ -8,6 +8,12 @@ Football News sử dụng **ESPN** cho lịch thi đấu, kết quả, bảng x�
 
 [![Thêm Football News vào Marketplace](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=khaisilk1910&repository=Football-News&category=integration)
 
+
+## 2026.11.26.3 — Sửa khôi phục HA Store khi mở/reload
+
+- Đọc HA Store khi mở trang; không để thao tác đọc chậm chiếm WebSocket vô hạn. Khi Store mất thời gian, phản hồi chẩn đoán ngay rồi tiếp tục đọc ở nền và tự đồng bộ khi có dữ liệu.
+- Nút **Đọc lại dữ liệu đã lưu** thực sự khởi tạo yêu cầu mới nếu yêu cầu cũ bị kẹt. Trạng thái socket cũ không thể ghi đè dữ liệu của socket mới.
+- Home Assistant vẫn lưu cache trên máy chủ, không lưu riêng trên từng trình duyệt. Không gọi ESPN trong quá trình phục hồi cache.
 
 ## 2026.11.21.4 — Bảng thống kê đối chiếu và tên cầu thủ dễ đọc
 

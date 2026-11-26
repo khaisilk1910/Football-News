@@ -152,7 +152,53 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         user_id = getattr(connection.user, "id", None)
         if ui_store is not None and user_id:
             ui_task = asyncio.create_task(ui_store.read(user_id))
-    configured, saved, store_status = await async_store_first_snapshot(hass, configured)
+    # A cold HA Store read is authoritative, but must not hold the first
+    # Companion WebSocket message indefinitely. Reuse one in-flight disk task
+    # across clients, give it a short foreground budget, then notify subscribers
+    # when it eventually finishes. No ESPN I/O is started here.
+    state = hass.data.get(DOMAIN, {})
+    key = tuple(sorted((item.entry_id, item.data.get("league", "")) for item in configured))
+    store_task = state.get("panel_store_first_read_task")
+    if (store_task is None or store_task.done() or state.get("panel_store_first_read_key") != key):
+        store_task = asyncio.create_task(async_store_first_snapshot(hass, configured))
+        state["panel_store_first_read_task"] = store_task
+        state["panel_store_first_read_key"] = key
+
+        def store_finished(task):
+            # Only an unfinished WebSocket request needs a wake-up event.
+            # Broadcasting on every normal read would cause a retry loop.
+            waiting = state.get("panel_store_first_read_waiters", set())
+            if task not in waiting:
+                return
+            waiting.discard(task)
+            try:
+                task.result()
+            except Exception:
+                _LOGGER.exception("Football News HA Store background read failed")
+            bus = getattr(hass, "bus", None)
+            if callable(getattr(bus, "async_fire", None)):
+                bus.async_fire(f"{DOMAIN}_data_updated", {"phase": "store_read_complete"})
+
+        store_task.add_done_callback(store_finished)
+    try:
+        configured, saved, store_status = await asyncio.wait_for(
+            asyncio.shield(store_task), timeout=6 if msg.get("fast") else 10)
+    except asyncio.TimeoutError:
+        # The disk task stays alive, but the browser gets a *real* HA response
+        # with whatever the coordinator has, rather than being stuck forever.
+        state.setdefault("panel_store_first_read_waiters", set()).add(store_task)
+        saved = {}
+        store_status = {"store_attempted": len(configured), "store_restored": 0,
+                        "store_errors": 0, "registry_fallback": False,
+                        "recovery_fallback": False, "store_pending": True}
+        _LOGGER.warning("Football News HA Store read still pending; returning coordinator snapshot "
+                        "to first-view WebSocket (configured=%d)", len(configured))
+    except Exception:
+        saved = {}
+        store_status = {"store_attempted": len(configured), "store_restored": 0,
+                        "store_errors": 1, "registry_fallback": False,
+                        "recovery_fallback": False, "store_pending": False}
+        _LOGGER.exception("Football News HA Store first-view read failed")
     runtimes = hass.data.get(DOMAIN, {}).get("entries", {})
     leagues = competition_snapshot(configured, runtimes, LEAGUES, saved)
     if msg.get("fast"):
@@ -173,7 +219,8 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
             "startup_pending": startup_pending,
             "bootstrap_partial": True,
             "cache_state": ("available" if cache_ready else
-                            "restoring" if configured or startup_pending else "pending_setup"),
+                            "restoring" if store_status.get("store_pending") or configured or startup_pending
+                            else "pending_setup"),
             "cache_source": "ha_store" if store_status["store_restored"] else "memory" if cache_ready else "none",
             "espn_wait_seconds": max((runtime["coordinator"].espn_wait_seconds()
                 for runtime in runtimes.values() if isinstance(runtime, dict) and
@@ -250,6 +297,7 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
         "backend_version": VERSION,
         "cache_source": "ha_store" if store_status["store_restored"] else "memory" if any(row.get("ready") for row in leagues) else "none",
         "cache_state": ("available" if any(row.get("ready") for row in leagues) else
+                        "restoring" if store_status.get("store_pending") else
                         "empty" if configured else "pending_setup"),
         "espn_wait_seconds": max((runtime["coordinator"].espn_wait_seconds()
                                   for runtime in runtimes.values()
