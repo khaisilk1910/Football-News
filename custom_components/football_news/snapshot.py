@@ -6,6 +6,7 @@ The dashboard must not mistake that state for zero configured leagues.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timezone
 
 from .qualification import position_zone
 
@@ -26,6 +27,20 @@ def runtime_for_entry(entry, runtimes: dict):
     return runtime if isinstance(runtime, dict) and runtime.get("coordinator") is not None else None
 
 
+def _newer_server_feed(server_stamp: object, disk_stamp: object) -> bool:
+    """Only newer, timestamped coordinator feeds may supersede HA Store."""
+    if not isinstance(server_stamp, str):
+        return False
+    if not isinstance(disk_stamp, str):
+        return True
+    try:
+        server = datetime.fromisoformat(server_stamp.replace("Z", "+00:00"))
+        disk = datetime.fromisoformat(disk_stamp.replace("Z", "+00:00"))
+        return server.tzinfo is not None and disk.tzinfo is not None and server > disk
+    except (ValueError, TypeError):
+        return False
+
+
 def competition_snapshot(config_entries, runtimes: dict, league_names: dict,
                          disk_fallbacks: dict | None = None) -> list[dict]:
     """Expose both loaded and not-yet-loaded entries without inventing scores."""
@@ -43,21 +58,24 @@ def competition_snapshot(config_entries, runtimes: dict, league_names: dict,
             snapshot = {}
         cached = (disk_fallbacks or {}).get(entry.entry_id) or {}
         if cached:
-            # A newly created runtime may have fixtures but no standings yet.
-            # Restore each feed independently until its coordinator has a
-            # successful timestamp, without replacing newer network data.
+            # The shared HA Store is the first-view source of truth. Merge by
+            # feed timestamp so an unhydrated or stale coordinator cannot hide
+            # data already committed to HA storage. Newer ESPN data on the
+            # server is still visible while its delayed Store write completes.
             restored = []
             combined = dict(snapshot)
             combined["updated_at"] = dict(snapshot.get("updated_at") or {})
             for name in ("fixtures", "standings", "news"):
-                # A partially started coordinator may have a timestamp but
-                # an empty ESPN feed. Keep saved HA content visible until
-                # actual rows arrive; do not overwrite any nonempty RAM feed.
                 cached_rows = cached.get(name) or []
-                if not combined.get(name) and cached_rows and name in cached.get("updated_at", {}):
-                    combined[name] = cached_rows
-                    combined["updated_at"][name] = cached["updated_at"][name]
-                    restored.append(name)
+                if not cached_rows or name not in cached.get("updated_at", {}):
+                    continue
+                live_rows = combined.get(name) or []
+                if live_rows and _newer_server_feed(
+                        combined["updated_at"].get(name), cached["updated_at"].get(name)):
+                    continue
+                combined[name] = cached_rows
+                combined["updated_at"][name] = cached["updated_at"][name]
+                restored.append(name)
             if restored:
                 existing = (snapshot.get("cache_info") or {}).get("restored_datasets", [])
                 combined["cache_info"] = {"type": "disk",

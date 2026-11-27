@@ -33,12 +33,14 @@ class FootballColdStartCache:
         result = self._loaded.get(key)
         # Recheck an empty snapshot quickly; periodically revalidate nonempty
         # entries to respect disk expiry and newly persisted ESPN results.
-        if result is not None and monotonic() - result[0] < (2 if force else (60 if result[1] else 3)):
+        # A WebSocket Store-first read must actually inspect durable storage.
+        # The short RAM mirror is only allowed for optional non-forced reads.
+        if not force and result is not None and monotonic() - result[0] < (60 if result[1] else 3):
             return result[1]
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
             result = self._loaded.get(key)
-            if result is not None and monotonic() - result[0] < (2 if force else (60 if result[1] else 3)):
+            if not force and result is not None and monotonic() - result[0] < (60 if result[1] else 3):
                 return result[1]
             stored = await FootballDiskCache(self._hass, entry.entry_id, league, season).load()
             datasets = stored.get("datasets", {})

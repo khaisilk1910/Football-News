@@ -1,4 +1,4 @@
-# Football News: HA Store-first (2026.11.26.3)
+# Football News: HA Store-first (2026.11.27.1)
 
 When opening Football News on any device, `football_news/data` reads the
 validated snapshot from Home Assistant's `.storage/football_news_cache_<entry_id>`
@@ -33,7 +33,7 @@ Home Assistant config entries, current season and storage files. Do not delete
 do not prove that a particular Home Assistant installation has healthy cache
 files or an operational WebSocket connection.
 
-## Khi nút đọc lại không phản hồi (2026.11.26.3)
+## Khi nút đọc lại không phản hồi (2026.11.27.1)
 
 Trước đây nút "Đọc lại dữ liệu đã lưu" gọi `load()` nhưng `_loading=true` khiến lần đọc bị bỏ qua. Bản này dùng một phiên tải mới, hủy hiệu lực phản hồi cũ và đọc từ HA Store qua WebSocket.
 

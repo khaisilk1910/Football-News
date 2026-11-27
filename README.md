@@ -1,6 +1,6 @@
 # Football News · Chỉ sử dụng dữ liệu ESPN
 
-**Phiên bản 2026.11.26.3** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
+**Phiên bản 2026.11.27.1** — Home Assistant 2026.11+, tiếng Việt và giao diện sáng/tối.
 
 Football News sử dụng **ESPN** cho lịch thi đấu, kết quả, bảng xếp hạng, tin bóng đá và thống kê cầu thủ. Không yêu cầu API key hoặc tích hợp dữ liệu khác. Zalo Bot chỉ dùng để **gửi thông báo**, không cung cấp dữ liệu bóng đá.
 
@@ -9,8 +9,13 @@ Football News sử dụng **ESPN** cho lịch thi đấu, kết quả, bảng x�
 [![Thêm Football News vào Marketplace](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=khaisilk1910&repository=Football-News&category=integration)
 
 
-## 2026.11.26.3 — Sửa khôi phục HA Store khi mở/reload
+## 2026.11.27.1 — Sửa khôi phục HA Store khi mở/reload
 
+- Đọc trực tiếp từ HA Store khi mở trang và khi nhấn **Đọc lại dữ liệu đã lưu**; đọc bắt buộc không được lấy từ RAM mirror 2 giây.
+- Ưu tiên snapshot đã lưu của từng giải, ngay cả khi runtime chưa chạy, và chấp nhận dữ liệu ESPN trong RAM chỉ khi có timestamp mới hơn.
+- Khôi phục nhiều giải kể cả khi Home Assistant mới nạp một phần danh sách cấu hình hoặc một giải đã thay đổi entry ID.
+- Nếu việc quét cache của giải thiếu bị chậm, dữ liệu Store của các giải khác vẫn được hiển thị trước; các thiết bị được thông báo qua sự kiện cập nhật khi quét hoàn tất.
+- WebView trong Companion tự đọc lại ngay nếu lần khởi tạo nhanh báo Store vẫn chưa hoàn thành, không phụ thuộc bộ đếm giờ bị tạm dừng khi màn hình ẩn.
 - Đọc HA Store khi mở trang; không để thao tác đọc chậm chiếm WebSocket vô hạn. Khi Store mất thời gian, phản hồi chẩn đoán ngay rồi tiếp tục đọc ở nền và tự đồng bộ khi có dữ liệu.
 - Nút **Đọc lại dữ liệu đã lưu** thực sự khởi tạo yêu cầu mới nếu yêu cầu cũ bị kẹt. Trạng thái socket cũ không thể ghi đè dữ liệu của socket mới.
 - Home Assistant vẫn lưu cache trên máy chủ, không lưu riêng trên từng trình duyệt. Không gọi ESPN trong quá trình phục hồi cache.

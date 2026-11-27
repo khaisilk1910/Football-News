@@ -20,7 +20,7 @@ class CacheReloadTests(unittest.IsolatedAsyncioTestCase):
             data = {
                 'fixtures': [{'id':'live-101','state':'pre','home':{'name':'Arsenal'},'away':{'name':'Chelsea'}}],
                 'standings': [{'name':'Arsenal','position':1,'points':23}],
-                'news': [], 'updated_at': {'fixtures':'2026-11-20T04:00:00+00:00'},
+                'news': [], 'updated_at': {'fixtures':'2026-11-20T04:00:01+00:00', 'standings':'2026-11-20T04:00:01+00:00'},
             }
             async def async_restore_cache(self):
                 raise AssertionError('must not re-open HA Store on browser reload')

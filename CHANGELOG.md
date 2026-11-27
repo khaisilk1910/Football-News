@@ -1,3 +1,18 @@
+## 2026.11.27.1 — Khắc phục đọc HA Store ngay lần mở đầu và đồng bộ nhiều thiết bị
+
+- Mọi WebSocket `football_news/data` đọc lại snapshot hợp lệ từ Home Assistant `.storage/football_news_cache_<entry_id>`; loại bỏ cache RAM 2 giây khi yêu cầu đọc Store bắt buộc.
+- Loại bỏ timeout 7 giây khiến HA Store đang đọc bị bỏ qua: quá trình đọc được chờ trong tác vụ nền của máy chủ, tự gửi sự kiện cập nhật khi hoàn tất.
+- Khi danh sách giải Home Assistant chưa khôi phục đủ, bổ sung mã giải đã lưu từ HA league registry; hỗ trợ cả trường hợp chỉ có một phần config entries.
+- Tìm snapshot của từng giải khi ID cấu hình đổi, thay vì chỉ quét khi toàn bộ các giải đều thiếu dữ liệu.
+- Khi tìm dữ liệu cho một giải bị thiếu, không giữ các giải đã đọc được ở màn hình loading; sau khi quét xong thông báo toàn bộ clients.
+- Snapshot từ HA Store ưu tiên hơn feed chưa mới trong RAM; dữ liệu ESPN thực sự mới hơn (theo timestamp) vẫn thắng.
+- Frontend tự gửi ngay lệnh đọc đầy đủ khi lần đọc nhanh báo HA Store còn pending, kể cả Android WebView báo `document.hidden` và trì hoãn timers.
+- Nút **Đọc lại cache HA** gửi `store_refresh:true`, bỏ phản hồi cũ và đưa ra trạng thái thao tác ngay; backend khởi động lần đọc HA Store mới.
+- Các snapshot disk-only hợp lệ không còn bị đánh dấu đang tải chỉ vì coordinator chưa chạy hoặc ESPN chưa hoàn tất chu kỳ đợi.
+- Tăng kiểm thử: force disk refresh, partial registry, multi-league ID recovery, scan chậm, stale RAM, hidden WebView.
+
+**Lưu ý:** Không lưu cache trận đấu trong localStorage/sessionStorage của trình duyệt. Khi HA Store thực sự không có snapshot hợp lệ, hệ thống hiển thị chẩn đoán, không giả tạo dữ liệu. Cần khởi động lại Home Assistant sau khi thay đổi mã Python tích hợp.
+
 ## 2026.11.26.3 — First open / Reload: WebSocket recovery and reliable HA Store retry
 
 - **Fix:** the **Đọc lại dữ liệu đã lưu** button now preempts a hung snapshot request instead of silently returning while `_loading` is true. Old WebSocket responses cannot erase a newer successful snapshot.

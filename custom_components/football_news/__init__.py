@@ -116,7 +116,7 @@ def _start_panel_cache_warm(hass: HomeAssistant, known_entries: list) -> None:
     creator = getattr(hass, "async_create_task", asyncio.create_task)
     state["panel_cache_warm_task"] = creator(warm())
 
-@websocket_api.websocket_command({"type": "football_news/data", probatio.Optional("entry_id"): str, probatio.Optional("fast"): bool})
+@websocket_api.websocket_command({"type": "football_news/data", probatio.Optional("entry_id"): str, probatio.Optional("fast"): bool, probatio.Optional("store_refresh"): bool})
 @websocket_api.async_response
 async def ws_get_data(hass: HomeAssistant, connection, msg):
     """Authenticated frontend snapshot, without leaking Zalo destination IDs."""
@@ -159,7 +159,8 @@ async def ws_get_data(hass: HomeAssistant, connection, msg):
     state = hass.data.get(DOMAIN, {})
     key = tuple(sorted((item.entry_id, item.data.get("league", "")) for item in configured))
     store_task = state.get("panel_store_first_read_task")
-    if (store_task is None or store_task.done() or state.get("panel_store_first_read_key") != key):
+    if (store_task is None or store_task.done() or
+            state.get("panel_store_first_read_key") != key or msg.get("store_refresh")):
         store_task = asyncio.create_task(async_store_first_snapshot(hass, configured))
         state["panel_store_first_read_task"] = store_task
         state["panel_store_first_read_key"] = key

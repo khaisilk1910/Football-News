@@ -1097,9 +1097,11 @@ class FootballNewsPanel extends HTMLElement {
       // browser reload and Android Companion reopen receive the same saved
       // snapshot; a later full read restores account-specific preferences.
       const fast = !this._fastBootstrapDone;
+      const refreshFromDisk = force;
       let data;
       try {
-        data = await this.request({type:'football_news/data',...(fast?{fast:true}:{})},
+        data = await this.request({type:'football_news/data',...(fast?{fast:true}:{}),
+          ...(refreshFromDisk?{store_refresh:true}:{})},
           fast ? 10500 : 14500);
       } catch (error) {
         // Mixed-version Home Assistant frontends may keep an older backend
@@ -1115,6 +1117,12 @@ class FootballNewsPanel extends HTMLElement {
       this._serverVersion = data.backend_version || '';
       this._serverStatus = data.recovery_status || null;
       this._cacheState = data.cache_state || 'restoring';
+      this._cacheSource = data.cache_source || 'none';
+      // An unfinished HA Store read must get an immediate second WS attempt.
+      // Relying only on setTimeout can strand an Android Companion hidden
+      // WebView until the user exits the dashboard and opens it again.
+      if (fast && data.recovery_status?.store_pending &&
+          !this.hasFootballContent(data.leagues)) this._syncPending = true;
       this._espnWaitSeconds = Math.max(0, Number(data.espn_wait_seconds) || 0);
       this._espnReadyAt = Date.now() + this._espnWaitSeconds * 1000;
       // The backend restores cache before requesting new ESPN data. Optional
@@ -1134,8 +1142,8 @@ class FootballNewsPanel extends HTMLElement {
           }
         }, Math.min(125000, this._espnWaitSeconds * 1000 + 1200));
       }
-      if (this._serverVersion && this._serverVersion !== '2026.11.26.3') {
-        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.26.3', this._serverVersion);
+      if (this._serverVersion && this._serverVersion !== '2026.11.27.1') {
+        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.27.1', this._serverVersion);
       }
       // HA can dispatch its custom panel before config entries have been
       // restored. Probe a few times before showing the real empty-setup guide.
@@ -1145,7 +1153,8 @@ class FootballNewsPanel extends HTMLElement {
         if (!this._emptySince) this._emptySince = Date.now();
         const recentlyConfigured = this._registryEverReady && this.leagues().length;
         const stillStarting = data.startup_pending === true ||
-          Number(data.configured_count) > 0 || this._emptyResponses < 4 ||
+          Number(data.configured_count) > 0 || data.recovery_status?.store_pending ||
+          data.recovery_status?.recovery_pending || this._emptyResponses < 4 ||
           Date.now() - this._emptySince < 9000;
         if (recentlyConfigured || stillStarting) {
           this._registryPending = true;
@@ -1170,8 +1179,12 @@ class FootballNewsPanel extends HTMLElement {
       // HA's `attempted` becomes true only AFTER the first ESPN refresh ends.
       // Keep asking the HA-local WebSocket while fixtures/tables are hydrating.
       const hasMatchOrTable = this.hasFootballContent(leagues);
-      const incomplete = Boolean(data.bootstrap_partial) || !leagues.length || !hasMatchOrTable ||
-        leagues.some(l=>!l.ready || !l.runtime_loaded || l.attempted === false) || diskRestored;
+      const incomplete = Boolean(data.bootstrap_partial) ||
+        Boolean(data.recovery_status?.store_pending || data.recovery_status?.recovery_pending) ||
+        !leagues.length || !hasMatchOrTable || leagues.some(l=>!l.ready);
+      // A healthy disk-only snapshot IS valid first-view data. Do not keep
+      // the loading state active simply because ESPN's 120-second grace
+      // period has not ended or the coordinator has not yet started.
       this._needsHydration = incomplete;
       this.data = {...DEFAULT_DATA, ...alive(data),leagues};
       this.applyServerUI(data.ui_state);
@@ -1409,6 +1422,7 @@ class FootballNewsPanel extends HTMLElement {
       this._registryPending=true;
       this._needsHydration=true;
       this.error='';
+      this.render(); // Show a visible retry immediately, even if the old WS is hung.
       await this.load({force:true});
       return;
     }
@@ -2318,7 +2332,7 @@ class FootballNewsPanel extends HTMLElement {
       ${body||(!setupNotice && noSavedData?
         `<section class="fn-hydration" role="status" aria-live="polite"><div><strong>${esc(this.locale==='vi'?'Chưa có dữ liệu đã lưu trên Home Assistant':'No saved Home Assistant data yet')}</strong><p>${esc(this._espnWaitSeconds>0?`Lần đầu cài đặt hoặc cache không còn hợp lệ. Đang ưu tiên kiểm tra HA Store; ESPN sẽ được thử sau khoảng ${Math.ceil(this._espnWaitSeconds)} giây. Bạn có thể ở nguyên trang.`:'Đã kiểm tra HA Store nhưng chưa có dữ liệu hợp lệ. Đang chờ ESPN đồng bộ lần đầu; trang sẽ tự hiển thị khi nhận được kết quả.')}</p><button type="button" data-restore-cache>Đọc lại cache HA</button></div></section>`:
         !setupNotice && !liveFeedReady && (this._needsHydration || this.tab==='overview')?
-        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||(this._hass?'đang chờ phản hồi WebSocket':'chưa được Home Assistant cấp kết nối')))}</p>${this._serverVersion && this._serverVersion!=='2026.11.26.3'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
+        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||(this._hass?'đang chờ phản hồi WebSocket':'chưa được Home Assistant cấp kết nối')))}</p>${this._serverVersion && this._serverVersion!=='2026.11.27.1'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
         `<div class="quiet">${esc(this.t(this.tab==='live'?'noLive':'none'))}</div>`)}
                 </div>
                 <div class="fn-dialog-host">${this.modalMarkup()}</div>

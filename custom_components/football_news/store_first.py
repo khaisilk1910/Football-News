@@ -43,54 +43,57 @@ async def async_store_first_snapshot(hass, configured: list) -> tuple[list, dict
     recovery = state.get("saved_cache_recovery")
     issues = {"store_attempted": 0, "store_restored": 0, "registry_fallback": False,
               "recovery_fallback": False, "store_errors": 0}
-    if not entries:
-        # This is a real Store-first read: do not wait for async_setup_entry.
-        # Both fallback sources use HA-owned disk storage, never ESPN.
-        async def registry_entries():
-            return await registry.fallback_entries() if registry else []
-
-        async def recovered_snapshots():
-            return await recovery.async_snapshots() if recovery else []
-
+    recovery_cache = {}
+    # The native entry registry can be only PARTIALLY ready during a HA cold
+    # start. Merge the durable HA league index even if one native entry already
+    # exists; otherwise the first view on a new device loses whole leagues.
+    if registry is not None and (not entries or not getattr(hass, "is_running", True)):
         try:
-            found = await asyncio.wait_for(asyncio.gather(
-                registry_entries(), recovered_snapshots(), return_exceptions=True), timeout=8)
-        except asyncio.TimeoutError:
-            found = [[], []]
+            # An optional index must not block native Store snapshots on the
+            # first sidebar visit when the HA registry is still starting.
+            indexed = await asyncio.wait_for(registry.fallback_entries(), timeout=1.5)
+            known_leagues = {ent.data.get("league") for ent in entries}
+            for ent in indexed:
+                league = ent.data.get("league")
+                if ent.entry_id not in known_ids and league not in known_leagues:
+                    entries.append(ent)
+                    known_ids.add(ent.entry_id)
+                    known_leagues.add(league)
+                    issues["registry_fallback"] = True
+        except Exception as err:
             issues["store_errors"] += 1
-            _LOGGER.warning("Football News HA Store league index timed out on first view")
-        indexed, recovered = found
-        if isinstance(indexed, BaseException):
-            _LOGGER.warning("Football News saved league index read failed: %s", type(indexed).__name__)
-            indexed = []
+            _LOGGER.warning("Football News saved league index unavailable: %s", type(err).__name__)
+
+    # When there are no indexed entries at all, discover verified HA Store
+    # files directly. In particular, do NOT infer that an empty coordinator
+    # means there are no saved competitions.
+    if not entries and recovery is not None:
+        try:
+            found = await asyncio.wait_for(recovery.async_snapshots(), timeout=20)
+            known_leagues = set()
+            for ent, snapshot in found:
+                league = ent.data.get("league")
+                if ent.entry_id not in known_ids and league not in known_leagues:
+                    entries.append(ent)
+                    known_ids.add(ent.entry_id)
+                    known_leagues.add(league)
+                    recovery_cache[ent.entry_id] = snapshot
+                    issues["recovery_fallback"] = True
+        except Exception as err:
             issues["store_errors"] += 1
-        if isinstance(recovered, BaseException):
-            _LOGGER.warning("Football News saved cache discovery failed: %s", type(recovered).__name__)
-            recovered = []
-            issues["store_errors"] += 1
-        for ent in indexed:
-            if ent.entry_id not in known_ids:
-                entries.append(ent)
-                known_ids.add(ent.entry_id)
-                issues["registry_fallback"] = True
-        for ent, _ in recovered:
-            if ent.entry_id not in known_ids:
-                entries.append(ent)
-                known_ids.add(ent.entry_id)
-                issues["recovery_fallback"] = True
-        recovery_cache = {ent.entry_id: snapshot for ent, snapshot in recovered if snapshot}
-    else:
-        recovery_cache = {}
+            _LOGGER.warning("Football News saved cache discovery unavailable: %s", type(err).__name__)
 
     cold = state.get("cold_cache")
     snapshots = dict(recovery_cache)
     if entries and cold is not None:
         async def read_one(ent):
             try:
-                # Read HA Store, even if RAM is populated. Only a very short
-                # single-flight window prevents redundant concurrent disk I/O.
+                # The first panel query always reads HA Store. A slow disk read
+                # continues after the short foreground WebSocket deadline and
+                # its completion wakes all devices; do not return None after a
+                # 7-second inner timeout and discard that eventual snapshot.
                 return ent.entry_id, await asyncio.wait_for(
-                    asyncio.shield(cold.async_entry_snapshot(ent, force=True)), timeout=7)
+                    cold.async_entry_snapshot(ent, force=True), timeout=25)
             except asyncio.TimeoutError:
                 _LOGGER.warning("Football News HA Store snapshot timed out league=%s", ent.data.get("league"))
                 return ent.entry_id, None
@@ -107,17 +110,43 @@ async def async_store_first_snapshot(hass, configured: list) -> tuple[list, dict
             elif saved:
                 snapshots[ent_id] = saved
 
-    # A re-created config entry has a new file key. Scan old *validated* HA
-    # cache files only if the per-entry Store has no usable snapshots.
-    if entries and not any(snapshots.values()) and recovery is not None:
+    # A re-created config entry may have a new HA Store key for only SOME
+    # leagues. Recover each missing competition independently, rather than
+    # requiring all configured leagues to be missing at once.
+    if entries and any(not snapshots.get(ent.entry_id) for ent in entries) and recovery is not None:
+        # A missing file for league B must not delay valid disk fixtures for
+        # league A. Run the read-only file scan once per HA instance; when it
+        # finishes, notify every open panel to re-read the newly discovered
+        # snapshots. New clients share the same server-side task.
+        scan = state.get("panel_missing_cache_scan_task")
+        if scan is None or scan.done():
+            scan = asyncio.create_task(recovery.async_snapshots())
+            state["panel_missing_cache_scan_task"] = scan
+
+            def scan_done(task):
+                try:
+                    task.result()
+                except Exception as err:
+                    _LOGGER.warning("Football News saved cache scan failed: %s", type(err).__name__)
+                if state.get("panel_missing_cache_scan_waiting"):
+                    state["panel_missing_cache_scan_waiting"] = False
+                    bus = getattr(hass, "bus", None)
+                    if callable(getattr(bus, "async_fire", None)):
+                        bus.async_fire(f"{DOMAIN}_data_updated", {"phase": "saved_cache_scan_complete"})
+
+            scan.add_done_callback(scan_done)
         try:
-            found = await asyncio.wait_for(recovery.async_snapshots(), timeout=7)
+            found = await asyncio.wait_for(asyncio.shield(scan), timeout=1.5)
             by_code = {ent.data.get("league"): snapshot for ent, snapshot in found if snapshot}
             for ent in entries:
                 old = by_code.get(ent.data.get("league"))
                 if old and not snapshots.get(ent.entry_id):
                     snapshots[ent.entry_id] = old
                     issues["recovery_fallback"] = True
+        except asyncio.TimeoutError:
+            issues["recovery_pending"] = True
+            state["panel_missing_cache_scan_waiting"] = True
+            _LOGGER.debug("Football News partial HA Store response while missing-cache scan runs")
         except Exception as err:
             issues["store_errors"] += 1
             _LOGGER.warning("Football News saved cache scan unavailable: %s", type(err).__name__)
