@@ -922,6 +922,46 @@ class FootballNewsPanel extends HTMLElement {
     if(this.tab==='overview') void this.loadFavouriteForm();
     if(['leaders','table','overview'].includes(this.tab)) await this.loadLeaders(this.previewLeague()?.league_code);
   }
+  // HA's custom-panel host owns the authenticated hass object. On a cold
+  // Android WebView launch the host may finish bootstrapping after this element
+  // has been created, without another property assignment reaching the child.
+  // Recover ONLY from the real same-page ha-panel-custom owner (never cookies,
+  // tokens, browser-side caches, or a new session).
+  recoverHassFromHost() {
+    const host = this.closest?.('ha-panel-custom');
+    const candidate = host?.hass;
+    if (!candidate) return Boolean(this._hass);
+    const usable = typeof candidate.callWS === 'function' ||
+      typeof candidate.connection?.sendMessagePromise === 'function';
+    if (!usable) return Boolean(this._hass);
+    if (candidate !== this._hass || this._observedConnection !== (candidate.connection || null))
+      this.hass = candidate;
+    return true;
+  }
+  // The official HA custom-panel API accepts either individual properties or
+  // a setProperties({hass, narrow, ...}) batch. Support both delivery paths.
+  setProperties(properties) {
+    if (!properties || typeof properties !== 'object') return;
+    if (Object.prototype.hasOwnProperty.call(properties, 'hass'))
+      this.hass = properties.hass;
+    if (Object.prototype.hasOwnProperty.call(properties, 'narrow'))
+      this.narrow = properties.narrow;
+    if (Object.prototype.hasOwnProperty.call(properties, 'route'))
+      this.route = properties.route;
+    if (Object.prototype.hasOwnProperty.call(properties, 'panel'))
+      this.panel = properties.panel;
+  }
+  haConnectionDiagnostic() {
+    if (this._hass) return this.locale === 'vi' ?
+      'đang chờ phản hồi WebSocket' : 'awaiting WebSocket response';
+    const host=this.closest?.('ha-panel-custom');
+    if (host?.hass) return this.locale === 'vi' ?
+      'vùng chứa HA đã có kết nối, đang đồng bộ vào Football News' :
+      'HA host connected; waiting for the panel bridge';
+    return this.locale === 'vi' ?
+      'chưa nhận được phiên kết nối HA (không phải thông báo từ chối quyền)' :
+      'HA session not yet received (this is not a permission denial)';
+  }
   set hass(hass) {
     const firstAssignment = !this._hass && !!hass;
     // HA sometimes mutates the same hass object while replacing its socket.
@@ -944,6 +984,10 @@ class FootballNewsPanel extends HTMLElement {
       this._fastBootstrapDone = false;
     }
     if (this.isConnected) this.subscribeSharedUpdates();
+    // The first render may have happened before HA injected hass. Without an
+    // immediate repaint the old "no HA session" text persists throughout a
+    // pending WS request, incorrectly implying an actual permission denial.
+    if (this.isConnected && (firstAssignment || changed || !hass)) this.render();
     // HA can assign hass *after* connectedCallback or replace the socket
     // while a previous request is still awaiting its result. Never lose
     // either transition because the in-flight loading mutex is held.
@@ -956,8 +1000,11 @@ class FootballNewsPanel extends HTMLElement {
   }
   set narrow(narrow) { this._narrow = Boolean(narrow); }
   connectedCallback() {
-    this.subscribeSharedUpdates();
     this.render();
+    // Prefer the already-authenticated custom-panel host on the FIRST visit;
+    // never wait for a sidebar round trip to trigger the hass setter.
+    this.recoverHassFromHost();
+    this.subscribeSharedUpdates();
     if (this._hass) void this.load();
     else this.scheduleRetry(); // HA can mount the panel before injecting hass.
     document.addEventListener?.('visibilitychange', this._onVisibility);
@@ -968,6 +1015,7 @@ class FootballNewsPanel extends HTMLElement {
     // Keep polling while native config entries are being installed, but avoid
     // frequent traffic once feeds become available (WS reads are HA-local).
     this._timer = setInterval(() => {
+      this.recoverHassFromHost();
       if (this._loading) {
         // A suspended mobile WebView may lose its request timeout callback.
         // Recovery must not depend on navigating away from the sidebar.
@@ -1078,6 +1126,9 @@ class FootballNewsPanel extends HTMLElement {
   }
   async load({force=false} = {}) {
     if (!this.isConnected) return;
+    // Obtain HA's existing authenticated session on the same page before
+    // rejecting the request; this also makes the manual Store button work.
+    this.recoverHassFromHost();
     // The manual recovery button and socket/page activation must be able to
     // supersede a hung read. The old response is ignored by its epoch guard.
     if (force) {
@@ -1142,8 +1193,8 @@ class FootballNewsPanel extends HTMLElement {
           }
         }, Math.min(125000, this._espnWaitSeconds * 1000 + 1200));
       }
-      if (this._serverVersion && this._serverVersion !== '2026.11.27.1') {
-        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.27.1', this._serverVersion);
+      if (this._serverVersion && this._serverVersion !== '2026.11.27.2') {
+        console.warn('[Football News] Frontend/backend mismatch:', '2026.11.27.2', this._serverVersion);
       }
       // HA can dispatch its custom panel before config entries have been
       // restored. Probe a few times before showing the real empty-setup guide.
@@ -2332,7 +2383,7 @@ class FootballNewsPanel extends HTMLElement {
       ${body||(!setupNotice && noSavedData?
         `<section class="fn-hydration" role="status" aria-live="polite"><div><strong>${esc(this.locale==='vi'?'Chưa có dữ liệu đã lưu trên Home Assistant':'No saved Home Assistant data yet')}</strong><p>${esc(this._espnWaitSeconds>0?`Lần đầu cài đặt hoặc cache không còn hợp lệ. Đang ưu tiên kiểm tra HA Store; ESPN sẽ được thử sau khoảng ${Math.ceil(this._espnWaitSeconds)} giây. Bạn có thể ở nguyên trang.`:'Đã kiểm tra HA Store nhưng chưa có dữ liệu hợp lệ. Đang chờ ESPN đồng bộ lần đầu; trang sẽ tự hiển thị khi nhận được kết quả.')}</p><button type="button" data-restore-cache>Đọc lại cache HA</button></div></section>`:
         !setupNotice && !liveFeedReady && (this._needsHydration || this.tab==='overview')?
-        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||(this._hass?'đang chờ phản hồi WebSocket':'chưa được Home Assistant cấp kết nối')))}</p>${this._serverVersion && this._serverVersion!=='2026.11.27.1'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
+        `<section class="fn-hydration" role="status" aria-live="polite"><span class="fn-hydration-spinner" aria-hidden="true"></span><div><strong>${esc(this.locale==='vi'?'Đang khôi phục dữ liệu từ Home Assistant':'Restoring data from Home Assistant')}</strong><p>${esc(this.locale==='vi'?'Đang đọc dữ liệu đã lưu trên HA. Trang tự thử lại nếu giải đấu chưa sẵn sàng, không cần thoát ra vào lại.':'Reading the HA-saved snapshot. This page retries automatically without navigation.')}</p><button type="button" data-restore-cache>${esc(this.locale==='vi'?'Đọc lại dữ liệu đã lưu':'Retry saved data')}</button><p class="fn-ha-status">${esc(this.locale==='vi'?'Trạng thái máy chủ':'Server status')}: ${esc(this._serverVersion||'chưa phản hồi')} · ${esc(this._serverStatus?`Giải HA: ${this._serverStatus.native_entries}; cache có dữ liệu: ${this._serverStatus.restored_feeds}`:(this.error||this.haConnectionDiagnostic()))}</p>${this._serverVersion && this._serverVersion!=='2026.11.27.2'?`<p class="warn">Phiên bản frontend/backend không khớp. Hãy khởi động lại HA và xóa cache trang.</p>`:''}</div></section>`:
         `<div class="quiet">${esc(this.t(this.tab==='live'?'noLive':'none'))}</div>`)}
                 </div>
                 <div class="fn-dialog-host">${this.modalMarkup()}</div>

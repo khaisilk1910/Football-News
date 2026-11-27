@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 DOMAIN = "football_news"
-VERSION = "2026.11.27.1"
+VERSION = "2026.11.27.2"
 DEFAULT_LEAGUE = "eng.1"
 DEFAULT_REMINDER_MINUTES = 30
 API_ROOT = "https://site.api.espn.com/apis"

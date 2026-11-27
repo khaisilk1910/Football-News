@@ -88,3 +88,11 @@ Bản nâng cấp này tự dọn các tùy chọn nhà cung cấp bóng đá c�
 2. Khi HA khởi động hoặc vừa tạo config entry, log `Football News cache-first window` cho biết số giây còn lại; lần truy cập đầu không được kéo dài lịch ESPN bằng các lần reload.
 3. Với bản cài mới chưa có snapshot: thông báo “Chưa có dữ liệu đã lưu trên Home Assistant” và đồng hồ chờ ESPN sẽ xuất hiện; đợi ít nhất hai phút để ESPN cập nhật tự động.
 4. Nếu vẫn trống khi backend báo cache `available`, bật `custom_components.football_news: debug` và cung cấp log thời điểm truy cập và diagnostics; có thể là lỗi WebSocket/quyền truy cập. Không xóa `.storage`.
+
+## Kiểm tra 2026.11.27.2 — Chưa nhận `hass` trong Android Companion
+
+1. Cài toàn bộ `custom_components/football_news` bản 2026.11.27.2, không xóa `/config/.storage/` hoặc config entry. Khởi động lại Home Assistant và đóng hẳn/mở lại Android Companion để WebView tải mã panel mới.
+2. Lần vào đầu, HA host truyền `hass` qua `setProperties`/setter; nếu sự kiện đầu bị bỏ lỡ, `football-news-panel` tự lấy lại `hass` đã xác thực từ tổ tiên `ha-panel-custom` ở cùng trang. Sau đó phải xuất hiện yêu cầu `football_news/data` qua WebSocket và lấy bản lưu server.
+3. Nếu vẫn hiện “chưa nhận được phiên kết nối HA”, đây là trạng thái thiếu đối tượng kết nối UI, **không chứng minh HA trả lỗi 403**. Kiểm tra trạng thái kết nối Companion và log JS, sau đó gửi log thực tế. Nếu `hass` đã có nhưng `football_news/data` lỗi, lỗi phải hiện nguyên văn trên giao diện.
+4. Bấm **Đọc lại dữ liệu đã lưu** để thử lấy `hass` từ host ngay lúc nhấn và gửi yêu cầu `store_refresh` khi kết nối sẵn sàng. Không đọc cache cục bộ từng thiết bị.
+5. Các bài kiểm thử Node/Python mô phỏng cơ chế truyền hass và dữ liệu WebSocket; chúng không thể xác nhận trạng thái của máy chủ Home Assistant thực tế.

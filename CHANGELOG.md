@@ -1,3 +1,10 @@
+## 2026.11.27.2 — Khôi phục hass ngay lần mở đầu trên Home Assistant Companion
+
+- Khắc phục trường hợp giao diện đã hiển thị nhưng `_hass` vẫn null trên lần mở đầu: nhận cả `setProperties` và setter truyền thống, đồng thời đọc lại phiên `hass` đã xác thực từ vùng chứa `ha-panel-custom` ngay khi gắn vào trang, khi khôi phục, và ở vòng kiểm tra trạng thái.
+- Nút **Đọc lại dữ liệu đã lưu** giờ phục hồi cầu nối `hass` trước khi yêu cầu WebSocket `football_news/data` với `store_refresh`; không phải điều hướng ra rồi vào lại.
+- Render lại trạng thái ngay khi nhận được `hass`, không để thông báo cũ “chưa được cấp kết nối” tồn tại trong lúc WebSocket đang chờ; phân biệt trạng thái chưa được truyền phiên kết nối với lỗi 403 phân quyền. Không lưu token, không dùng RAM trình duyệt thay cho HA Store.
+- Bổ sung kiểm thử phiên kết nối xuất hiện trước/sau khi gắn custom panel, thay đổi socket và bấm đọc lại thủ công.
+
 ## 2026.11.27.1 — Khắc phục đọc HA Store ngay lần mở đầu và đồng bộ nhiều thiết bị
 
 - Mọi WebSocket `football_news/data` đọc lại snapshot hợp lệ từ Home Assistant `.storage/football_news_cache_<entry_id>`; loại bỏ cache RAM 2 giây khi yêu cầu đọc Store bắt buộc.
